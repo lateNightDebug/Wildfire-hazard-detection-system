@@ -1,0 +1,9 @@
+# Dead-tree detection backend (DeepForest).
+# Heavy (pulls pytorch-lightning, geopandas, rasterio, albumentations, etc.), so it
+# is a separate install. Install AFTER torch + requirements.txt:
+#   pip install -r requirements-deadtree.txt
+#
+# The app degrades gracefully if this is absent: fire/smoke still works and the
+# dead-tree detector is simply disabled with a log message.
+
+deepforest

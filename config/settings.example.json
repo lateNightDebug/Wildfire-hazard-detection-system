@@ -1,0 +1,45 @@
+{
+  "lmstudio_url": "http://localhost:1234",
+  "lmstudio_model": "qwen3.5-9b",
+  "output_dir": "outputs",
+  "models_dir": "models",
+  "language": "English",
+
+  "conf_threshold": 0.30,
+  "slice_size": 1024,
+  "overlap_ratio": 0.20,
+  "batch_size": 4,
+  "perform_standard_pred": true,
+
+  "grid_rows": 6,
+  "grid_cols": 8,
+
+  "df_patch_size": 800,
+  "df_patch_overlap": 0.25,
+  "df_crown_model": "weecology/deepforest-tree",
+  "df_dead_model": "weecology/cropmodel-deadtrees",
+  "df_dead_label": "Dead",
+
+  "model_sources": [
+    {
+      "key": "deadtree",
+      "filename": "dead_tree.pt",
+      "label": "Hazardous dead trees (primary)",
+      "backend": "deepforest",
+      "hf_repo_id": "",
+      "hf_filename": "",
+      "fallback_url": "",
+      "enabled": true
+    },
+    {
+      "key": "firesmoke",
+      "filename": "fire_smoke.pt",
+      "label": "Flame & smoke (secondary)",
+      "backend": "yolo",
+      "hf_repo_id": "leeyunjai/yolo11-firedetect",
+      "hf_filename": "firedetect-11s.pt",
+      "fallback_url": "https://raw.githubusercontent.com/sayedgamal99/Real-Time-Smoke-Fire-Detection-YOLO11/main/models/best_nano_111.pt",
+      "enabled": true
+    }
+  ]
+}

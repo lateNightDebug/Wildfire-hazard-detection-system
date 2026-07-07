@@ -1,0 +1,282 @@
+"""PDF field report builder (Layer 2) using ReportLab platypus.
+
+Layout (landscape Letter):
+  - Cover page: title, flight/batch info, totals, detection breakdown.
+  - Per-image pages: original + annotated (crown highlight) + grid map side-by-side,
+    plus a GPS/metadata + per-type detection-count table.
+  - Summary page: batch statistics table + AI analysis/recommendations (Qwen via
+    LM Studio; a graceful fallback note is used if the LLM text is unavailable).
+
+No risk classification (per spec) — detections are counted and flagged, not scored.
+Images are downscaled to a display copy before embedding so the PDF stays small.
+"""
+
+from __future__ import annotations
+
+from collections import Counter
+from pathlib import Path
+from typing import Optional
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import landscape, letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas as canvas_mod
+from reportlab.platypus import (
+    Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+)
+
+from .types import BatchResult, ImageResult
+
+PAGE = landscape(letter)  # (792, 612) pt
+_styles = getSampleStyleSheet()
+_H1 = _styles["Title"]
+_H2 = _styles["Heading2"]
+_BODY = _styles["BodyText"]
+_SMALL = ParagraphStyle("small", parent=_styles["Normal"], fontSize=8, textColor=colors.grey)
+
+HEADER = colors.HexColor("#2c3e50")
+ACCENT = colors.HexColor("#c0392b")
+
+
+class _NumberedCanvas(canvas_mod.Canvas):
+    """Adds 'Page X of Y' and a footer banner (two-pass over saved pages)."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self._saved = []
+
+    def showPage(self):
+        self._saved.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._saved)
+        for state in self._saved:
+            self.__dict__.update(state)
+            self._footer(total)
+            super().showPage()
+        super().save()
+
+    def _footer(self, total):
+        w, _ = PAGE
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.grey)
+        self.drawString(0.6 * inch, 0.4 * inch, "Wildfire Hazardous Tree Mapping System")
+        self.drawRightString(w - 0.6 * inch, 0.4 * inch, f"Page {self._pageNumber} of {total}")
+
+
+def _banner(canvas, doc):
+    w, h = PAGE
+    canvas.saveState()
+    canvas.setFillColor(HEADER)
+    canvas.rect(0, h - 0.45 * inch, w, 0.45 * inch, fill=1, stroke=0)
+    canvas.setFillColor(colors.white)
+    canvas.setFont("Helvetica-Bold", 10)
+    canvas.drawString(0.6 * inch, h - 0.32 * inch, "ALBERTA WILDFIRE — DRONE HAZARD DETECTION")
+    canvas.restoreState()
+
+
+def _display_copy(src: Optional[str], assets: Path, max_px: int = 1200) -> Optional[str]:
+    """Downscale an image to a display-size JPG in `assets`; return its path or None."""
+    if not src:
+        return None
+    p = Path(src)
+    if not p.exists():
+        return None
+    try:
+        from PIL import Image as PILImage
+
+        assets.mkdir(parents=True, exist_ok=True)
+        out = assets / f"disp_{p.stem}.jpg"
+        with PILImage.open(p) as im:
+            im = im.convert("RGB")
+            im.thumbnail((max_px, max_px))
+            im.save(out, "JPEG", quality=80)
+        return str(out)
+    except Exception:
+        return str(p)
+
+
+def _fit_image(path: Optional[str], max_w: float, max_h: float):
+    """An Image flowable scaled to fit (max_w, max_h) keeping aspect ratio, or a dash."""
+    if not path or not Path(path).exists():
+        return Paragraph("—", _SMALL)
+    iw, ih = ImageReader(path).getSize()
+    ratio = ih / float(iw)
+    w = max_w
+    h = w * ratio
+    if h > max_h:
+        h = max_h
+        w = h / ratio
+    return Image(path, width=w, height=h)
+
+
+def _counts_by_type(im: ImageResult) -> dict:
+    return dict(Counter(d.display for d in im.detections))
+
+
+def _fmt_counts(counts: dict) -> str:
+    """'{"Dead Tree": 68}' -> 'Dead Tree: 68'."""
+    if not counts:
+        return "—"
+    return ", ".join(f"{k}: {v}" for k, v in counts.items())
+
+
+def build_summary_text(batch: BatchResult) -> str:
+    """Compact detection summary fed to the LLM for analysis/recommendations."""
+    s = batch.stats
+    bi = batch.batch_info
+    lines = [
+        f"Survey batch: {bi.get('batch_label', 'n/a')} (captured/processed {bi.get('generated_at', '')}).",
+        f"Images processed: {s.get('images_processed', 0)}; flagged with hazards: {s.get('flagged_images', 0)}.",
+        f"Total detections: {s.get('total_detections', 0)} by type {s.get('detections_by_type', {})}.",
+        f"Images with dead trees: {s.get('images_with_deadtree', 0)}, "
+        f"flame: {s.get('images_with_flame', 0)}, smoke: {s.get('images_with_smoke', 0)}.",
+        f"Images with GPS: {s.get('images_with_gps', 0)}.",
+        "",
+        "Per-image:",
+    ]
+    for im in batch.images[:30]:
+        if not im.detections:
+            continue
+        gps = f"{im.gps[0]:.5f}, {im.gps[1]:.5f}" if im.gps else "no GPS"
+        lines.append(f"- {im.name}: {_counts_by_type(im)} at GPS {gps} (alt {im.altitude} m).")
+    return "\n".join(lines)
+
+
+def _cover(batch: BatchResult) -> list:
+    s = batch.stats
+    bi = batch.batch_info
+    story = [
+        Spacer(1, 0.6 * inch),
+        Paragraph("Wildfire Hazardous Tree Mapping", _H1),
+        Paragraph("Drone Forest Hazard Detection — Field Report", _H2),
+        Spacer(1, 0.3 * inch),
+    ]
+    info = [
+        ["Batch", str(bi.get("batch_label", "n/a"))],
+        ["Generated", str(bi.get("generated_at", ""))],
+        ["Device", str(bi.get("device", ""))],
+        ["Images processed", str(s.get("images_processed", 0))],
+        ["Flagged with hazards", str(s.get("flagged_images", 0))],
+        ["Total detections", f"{s.get('total_detections', 0)}  ({_fmt_counts(s.get('detections_by_type', {}))})"],
+        ["Images with GPS", str(s.get("images_with_gps", 0))],
+    ]
+    t = Table(info, colWidths=[2.2 * inch, 6.0 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f0f3f5")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d5dbdf")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story += [t, Spacer(1, 0.3 * inch),
+              Paragraph("Legend: dead tree = yellow, flame = red, smoke = orange.", _SMALL),
+              PageBreak()]
+    return story
+
+
+def _image_page(im: ImageResult, assets: Path) -> list:
+    w, h = PAGE
+    usable_w = w - 1.2 * inch
+    col = (usable_w - 0.3 * inch) / 3.0
+    img_h = 3.0 * inch
+
+    o = _fit_image(_display_copy(im.orig_display_path, assets), col, img_h)
+    a = _fit_image(_display_copy(im.annotated_path, assets), col, img_h)
+    g = _fit_image(_display_copy(im.density_path, assets), col, img_h)
+    row = Table([[o, a, g], ["Original", "Detections (highlighted)", "Hazard density grid"]],
+                colWidths=[col] * 3)
+    row.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("VALIGN", (0, 0), (-1, 0), "TOP"),
+        ("FONTSIZE", (0, 1), (-1, 1), 8), ("TEXTCOLOR", (0, 1), (-1, 1), colors.grey),
+        ("TOPPADDING", (0, 1), (-1, 1), 2),
+    ]))
+
+    counts = _counts_by_type(im)
+    gps = f"{im.gps[0]:.6f}, {im.gps[1]:.6f}" if im.gps else "—"
+    meta = [
+        ["Image", im.name, "Detections", str(len(im.detections))],
+        ["GPS (lat, lon)", gps, "By type", _fmt_counts(counts)],
+        ["Altitude (m)", str(im.altitude if im.altitude is not None else "—"),
+         "Timestamp", str(im.timestamp or "—")],
+    ]
+    mt = Table(meta, colWidths=[1.6 * inch, 3.4 * inch, 1.4 * inch, 2.4 * inch])
+    mt.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#dddddd")),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f4f6f7")),
+        ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#f4f6f7")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+
+    story = [Paragraph(f"Image: {im.name}", _H2), Spacer(1, 0.08 * inch), row,
+             Spacer(1, 0.12 * inch), mt]
+    if im.error:
+        story.append(Paragraph(f"Error: {im.error}", _SMALL))
+    story.append(PageBreak())
+    return story
+
+
+def _summary_page(batch: BatchResult, ai_text: Optional[str]) -> list:
+    s = batch.stats
+    rows = [["Metric", "Value"]] + [
+        ["Images processed", s.get("images_processed", 0)],
+        ["Flagged images", s.get("flagged_images", 0)],
+        ["Total detections", s.get("total_detections", 0)],
+        ["Mean detections / image", s.get("mean_detections_per_image", 0)],
+        ["By type", _fmt_counts(s.get("detections_by_type", {}))],
+        ["Images with dead trees", s.get("images_with_deadtree", 0)],
+        ["Images with flame / smoke",
+         f"{s.get('images_with_flame', 0)} / {s.get('images_with_smoke', 0)}"],
+        ["Images with GPS", s.get("images_with_gps", 0)],
+    ]
+    st = Table([[str(c) for c in r] for r in rows], colWidths=[3.2 * inch, 5.0 * inch])
+    st.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), HEADER), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f9fa")]),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story = [Paragraph("Batch Summary", _H1), Spacer(1, 0.2 * inch), st, Spacer(1, 0.3 * inch),
+             Paragraph("AI Analysis & Recommendations", _H2)]
+    body = ai_text or ("[Automated AI analysis unavailable — LM Studio was not reachable. "
+                       "Start the local LM Studio server and load the model to include analysis.]")
+    for para in body.split("\n\n"):
+        para = para.strip()
+        if para:
+            story.append(Paragraph(para.replace("\n", "<br/>"), _BODY))
+            story.append(Spacer(1, 0.08 * inch))
+    return story
+
+
+def build_report(
+    batch: BatchResult,
+    out_path: str | Path,
+    ai_text: Optional[str] = None,
+) -> Path:
+    """Build the PDF field report at `out_path`. Returns the path."""
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    assets = out_path.parent / "_report_assets"
+
+    doc = SimpleDocTemplate(
+        str(out_path), pagesize=PAGE,
+        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
+        topMargin=0.7 * inch, bottomMargin=0.6 * inch,
+        title="Wildfire Hazardous Tree Mapping — Field Report",
+    )
+    story: list = []
+    story += _cover(batch)
+    for im in batch.images:
+        story += _image_page(im, assets)
+    story += _summary_page(batch, ai_text)
+
+    doc.build(story, onFirstPage=_banner, onLaterPages=_banner, canvasmaker=_NumberedCanvas)
+    return out_path

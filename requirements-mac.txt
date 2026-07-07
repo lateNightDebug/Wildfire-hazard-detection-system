@@ -1,0 +1,8 @@
+# macOS (CPU-only or Apple Silicon MPS), Python 3.13.
+# Step 1 of 2 — install plain PyTorch wheels (NO --index-url; they include MPS+CPU):
+#   pip install -r requirements-mac.txt
+# Step 2 of 2 — then the core deps:
+#   pip install -r requirements.txt
+
+torch
+torchvision

@@ -1,0 +1,23 @@
+# Core dependencies (shared, all platforms).
+#
+# IMPORTANT: install PyTorch FIRST, then this file, so pip does not pull a
+# CPU-only torch wheel as an ultralytics dependency:
+#   Windows (RTX 4090):  pip install -r requirements-win-cuda.txt
+#   Mac (CPU/MPS):       pip install -r requirements-mac.txt
+# ...then:               pip install -r requirements.txt
+
+ultralytics>=8.3
+sahi>=0.12.1
+pillow>=10
+numpy
+opencv-python
+exifread
+reportlab>=4
+gradio>=6
+gradio_image_annotation
+requests
+huggingface_hub
+tqdm
+
+# Optional: GeoTIFF GPS fallback (uncomment if your drone images are orthomosaics)
+# rasterio
