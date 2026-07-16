@@ -3,6 +3,7 @@
   "lmstudio_model": "qwen3.5-9b",
   "output_dir": "outputs",
   "models_dir": "models",
+  "source_dir": "",
   "language": "English",
 
   "conf_threshold": 0.30,
@@ -20,6 +21,14 @@
   "df_dead_model": "weecology/cropmodel-deadtrees",
   "df_dead_label": "Dead",
 
+  "severity_deadtrees_high": 10.0,
+  "severity_deadtrees_medium": 3.0,
+
+  "onnx_input_size": 640,
+  "onnx_normalize": "0-255",
+  "onnx_channel_order": "RGB",
+  "onnx_nms_iou": 0.45,
+
   "model_sources": [
     {
       "key": "deadtree",
@@ -29,6 +38,7 @@
       "hf_repo_id": "",
       "hf_filename": "",
       "fallback_url": "",
+      "labels_filename": "",
       "enabled": true
     },
     {
@@ -39,6 +49,18 @@
       "hf_repo_id": "leeyunjai/yolo11-firedetect",
       "hf_filename": "firedetect-11s.pt",
       "fallback_url": "https://raw.githubusercontent.com/sayedgamal99/Real-Time-Smoke-Fire-Detection-YOLO11/main/models/best_nano_111.pt",
+      "labels_filename": "",
+      "enabled": true
+    },
+    {
+      "key": "deadtree_onnx",
+      "filename": "dead_tree.onnx",
+      "label": "Custom dead-tree model (Azure Custom Vision ONNX export)",
+      "backend": "onnx",
+      "hf_repo_id": "",
+      "hf_filename": "",
+      "fallback_url": "",
+      "labels_filename": "dead_tree.labels.txt",
       "enabled": true
     }
   ]

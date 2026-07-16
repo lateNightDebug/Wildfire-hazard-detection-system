@@ -32,13 +32,14 @@ class ModelSource:
     A source with no URLs is "bring your own": drop a .pt into models/ yourself.
     """
 
-    key: str  # "deadtree" / "firesmoke"
-    filename: str  # local filename under models/ (for backend="yolo")
+    key: str  # "deadtree" / "firesmoke" / "deadtree_onnx"
+    filename: str  # local filename under models/ (for backend="yolo"/"onnx")
     label: str = ""  # human label for the UI
-    backend: str = "yolo"  # "yolo" (SAHI+ultralytics .pt) or "deepforest"
+    backend: str = "yolo"  # "yolo" (SAHI+ultralytics .pt), "deepforest", or "onnx"
     hf_repo_id: str = ""
     hf_filename: str = ""
     fallback_url: str = ""
+    labels_filename: str = ""  # backend="onnx": class-names file (Custom Vision labels.txt)
     enabled: bool = True
 
 
@@ -61,6 +62,15 @@ def _default_model_sources() -> list[ModelSource]:
                 "Real-Time-Smoke-Fire-Detection-YOLO11/main/models/best_nano_111.pt"
             ),
         ),
+        # Phase-2 custom model: train on customvision.ai (compact domain), export to
+        # ONNX, drop model + labels into models/ — it is picked up automatically.
+        ModelSource(
+            key="deadtree_onnx",
+            filename="dead_tree.onnx",
+            label="Custom dead-tree model (Azure Custom Vision ONNX export)",
+            backend="onnx",
+            labels_filename="dead_tree.labels.txt",
+        ),
     ]
 
 
@@ -73,6 +83,7 @@ class Settings:
     # --- paths (relative paths are resolved against the project root) ---
     output_dir: str = "outputs"
     models_dir: str = "models"
+    source_dir: str = ""  # mission folder (SD-card dump) the console ingests
 
     # --- report ---
     language: str = "English"
@@ -94,6 +105,17 @@ class Settings:
     df_crown_model: str = "weecology/deepforest-tree"
     df_dead_model: str = "weecology/cropmodel-deadtrees"
     df_dead_label: str = "Dead"  # crop-model label to keep (alive/dead)
+
+    # --- console display severity (UI-only badge; no risk field in data/PDF) ---
+    # Dead trees are the primary target, so severity = avg dead trees per image.
+    severity_deadtrees_high: float = 10.0  # >= this per image -> High
+    severity_deadtrees_medium: float = 3.0  # >= this per image -> Medium
+
+    # --- ONNX detector (backend="onnx", e.g. Azure Custom Vision export) ---
+    onnx_input_size: int = 640  # fallback when the model input has dynamic H/W
+    onnx_normalize: str = "0-255"  # "0-255" (Custom Vision) | "0-1" | "imagenet"
+    onnx_channel_order: str = "RGB"  # or "BGR", per the exported model's training
+    onnx_nms_iou: float = 0.45  # IoU threshold merging tile detections
 
     # --- models (primary dead-tree + secondary fire/smoke) ---
     model_sources: list[ModelSource] = field(default_factory=_default_model_sources)

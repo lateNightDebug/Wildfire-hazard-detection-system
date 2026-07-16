@@ -14,8 +14,25 @@ Images are downscaled to a display copy before embedding so the PDF stays small.
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+
+def timestamped_report_path(out_dir: str | Path) -> Path:
+    """Unique report filename inside a run folder (regenerating never overwrites)."""
+    base = Path(out_dir) / f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    path, n = base, 2
+    while path.exists():  # two generations within the same second
+        path = base.with_name(f"{base.stem}_{n}.pdf")
+        n += 1
+    return path
+
+
+def latest_report(out_dir: str | Path) -> Optional[Path]:
+    """Newest report PDF in a run folder (report_*.pdf, or the legacy report.pdf)."""
+    candidates = sorted(Path(out_dir).glob("report*.pdf"), key=lambda p: p.stat().st_mtime)
+    return candidates[-1] if candidates else None
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import landscape, letter

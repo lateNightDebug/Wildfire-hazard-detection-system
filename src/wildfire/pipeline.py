@@ -69,11 +69,16 @@ def process_image(
         det_src = _detection_source(path, rgb, out_dir / "_cache")
         detections = _run_detectors(detectors, det_src)
 
+        # One subfolder per artifact kind — a 200-image flight would otherwise
+        # dump 600 mixed files (original/annotated/gridmap) into the run root.
         stem = path.stem
-        orig_path = _save_jpg(out_dir / f"{stem}_original.jpg", bgr)
-        annotated_path = _save_jpg(out_dir / f"{stem}_annotated.jpg", draw_boxes(bgr, detections))
+        for sub in ("originals", "annotated", "gridmaps"):
+            (out_dir / sub).mkdir(parents=True, exist_ok=True)
+        orig_path = _save_jpg(out_dir / "originals" / f"{stem}.jpg", bgr)
+        annotated_path = _save_jpg(out_dir / "annotated" / f"{stem}.jpg",
+                                   draw_boxes(bgr, detections))
         density_path = _save_jpg(
-            out_dir / f"{stem}_gridmap.jpg",
+            out_dir / "gridmaps" / f"{stem}.jpg",
             grid_density_map(bgr, detections, rows=settings.grid_rows, cols=settings.grid_cols),
         )
 

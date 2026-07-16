@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map — Wildfire Console</title>
+<link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+<nav id="topnav" class="topnav"></nav>
+
+<div style="display:grid; grid-template-columns:1fr 320px; gap:16px; padding:16px 28px 0; height:calc(100vh - 64px - 16px);">
+  <div class="card" style="overflow:hidden; display:flex; flex-direction:column;">
+    <div class="card-head">
+      <div style="display:flex; align-items:center; gap:9px;">
+        <span class="card-title">Hazard Map — all scans</span>
+        <span class="mono" style="font-size:11px; color:var(--muted-3);" id="pin-count"></span>
+      </div>
+      <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);">
+        <span><span class="legend-dot" style="background:#E05555;"></span> High</span>
+        <span><span class="legend-dot" style="background:#F0A500;"></span> Medium</span>
+        <span><span class="legend-dot" style="background:#3A9A3A;"></span> Low</span>
+      </div>
+    </div>
+    <div class="map-wrap" id="map" style="min-height:0;"></div>
+  </div>
+
+  <div class="card" style="display:flex; flex-direction:column; overflow:hidden;">
+    <div style="padding:14px 18px 10px;"><span class="card-title">Locations</span></div>
+    <div style="flex:1; overflow-y:auto;" id="pin-list"></div>
+  </div>
+</div>
+
+<script src="/static/console.js"></script>
+<script>
+renderNav("map");
+let PINS = [];
+let selectedPin = null;
+
+function drawMap() {
+  const el = document.getElementById("map");
+  const pins = gpsToPercent(PINS);
+  document.getElementById("pin-count").textContent =
+    `· ${pins.length} marker${pins.length === 1 ? "" : "s"}`;
+  let html = terrainSvg("wfm") + '<div class="map-grid-overlay"></div>';
+  for (const p of pins) {
+    const c = SEV[p.severity].color;
+    html += `
+      <div class="pin ${selectedPin === p.id ? "selected" : ""}" data-id="${esc(p.id)}" style="left:${p.x}%; top:${p.y}%;">
+        <span class="pin-ring" style="background:${c};"></span>
+        <span class="pin-dot" style="background:${c}; box-shadow:0 0 0 2px ${c}55, 0 2px 8px rgba(0,0,0,.55);"></span>
+      </div>`;
+  }
+  const sel = pins.find(p => p.id === selectedPin);
+  if (sel) {
+    const below = sel.y < 38;
+    const leftPct = Math.min(Math.max(sel.x, 17), 83);
+    html += `
+      <div class="map-popup" data-popup style="left:${leftPct}%; top:${sel.y}%;
+           transform:${below ? "translate(-50%, 22px)" : "translate(-50%, calc(-100% - 22px))"};">
+        <span class="badge ${sel.severity}">${SEV[sel.severity].label.toUpperCase()} SEVERITY</span>
+        <div style="font-size:13px; font-weight:600; margin-top:7px; line-height:1.25;">${esc(sel.id)}</div>
+        <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">${fmtCoord(sel.lat, sel.lon)}</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:11px; padding-top:10px; border-top:1px solid #eee;">
+          <span class="mono" style="font-size:11px; color:var(--muted);">${esc(sel.date)} · ${esc(sel.time)}</span>
+          <a class="link-green" style="font-size:11px;" href="/scans/${encodeURIComponent(sel.id)}">Open →</a>
+        </div>
+        <div class="tail" style="${below
+          ? "top:-6px; border-left:1px solid #e2e0d6; border-top:1px solid #e2e0d6;"
+          : "bottom:-6px; border-right:1px solid #e2e0d6; border-bottom:1px solid #e2e0d6;"}"></div>
+      </div>`;
+  }
+  if (!pins.length) {
+    html += '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cdd6c0; opacity:.5; font-size:12px;" class="mono">No GPS-tagged scans yet</div>';
+  }
+  html += '<div class="map-attr">Stylized terrain · pins from image GPS · not to scale · offline tile map = roadmap</div>';
+  el.innerHTML = html;
+}
+
+function drawList() {
+  document.getElementById("pin-list").innerHTML = PINS.map(p => `
+    <div data-list-id="${esc(p.id)}" style="padding:12px 18px; border-bottom:1px solid var(--line-soft); cursor:pointer; ${selectedPin === p.id ? "background:#faf9f4;" : ""}">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-size:12px; font-weight:600;">${esc(p.date)} · ${esc(p.time)}</span>
+        ${sevBadge(p.severity)}
+      </div>
+      <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">
+        ${fmtCoord(p.lat, p.lon)} · ${p.total_detections} detection${p.total_detections === 1 ? "" : "s"}
+      </div>
+    </div>`).join("") ||
+    '<div class="empty">No GPS-tagged runs yet.</div>';
+  document.querySelectorAll("[data-list-id]").forEach(el =>
+    el.addEventListener("click", () => { selectedPin = el.dataset.listId; drawMap(); drawList(); }));
+}
+
+document.getElementById("map").addEventListener("click", e => {
+  const pinEl = e.target.closest(".pin");
+  if (pinEl) selectedPin = pinEl.dataset.id === selectedPin ? null : pinEl.dataset.id;
+  else if (e.target.closest("[data-popup]")) return;
+  else if (selectedPin === null) return;
+  else selectedPin = null;
+  drawMap(); drawList();
+});
+
+api("/api/summary").then(d => { PINS = d.pins; drawMap(); drawList(); })
+  .catch(e => toast("Failed to load map: " + e.message));
+</script>
+</body>
+</html>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Wildfire Console</title>
+<link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+<nav id="topnav" class="topnav"></nav>
+
+<!-- STAT CARDS -->
+<div class="stats" style="padding:22px 28px 0;">
+  <div class="card stat">
+    <div class="stat-top"><span class="stat-label">TOTAL SCANS</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b5b5ad" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+    </div>
+    <div class="stat-value" id="st-total">—</div>
+    <div class="stat-note" id="st-total-note">runs in outputs/</div>
+  </div>
+  <div class="card stat accent-red">
+    <div class="stat-top"><span class="stat-label">HIGH SEVERITY</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E05555" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+    </div>
+    <div class="stat-value" id="st-high" style="color:var(--red);">—</div>
+    <div class="stat-note">flame or heavy dead-tree density</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-top"><span class="stat-label">SCANS FLAGGED</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F0A500" stroke-width="2"><path d="M4 21V4M4 4h13l-2 4 2 4H4"></path></svg>
+    </div>
+    <div class="stat-value" id="st-flagged">—</div>
+    <div class="stat-note">runs with at least one hazard</div>
+  </div>
+  <div class="card stat">
+    <div class="stat-top"><span class="stat-label">LAST SCAN</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b5b5ad" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+    </div>
+    <div class="stat-value" id="st-last" style="font-size:22px; margin-top:11px;">—</div>
+    <div class="stat-note" id="st-last-note"></div>
+  </div>
+</div>
+
+<!-- MAP + RECENT -->
+<div style="display:grid; grid-template-columns:60% 40%; gap:16px; padding:16px 28px 0;">
+  <div class="card" style="overflow:hidden; display:flex; flex-direction:column;">
+    <div class="card-head">
+      <div style="display:flex; align-items:center; gap:9px;">
+        <span class="card-title">Hazard Map</span>
+        <span class="mono" style="font-size:11px; color:var(--muted-3);" id="pin-count">· 0 markers</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);">
+        <span><span class="legend-dot" style="background:#E05555;"></span> High</span>
+        <span><span class="legend-dot" style="background:#F0A500;"></span> Medium</span>
+        <span><span class="legend-dot" style="background:#3A9A3A;"></span> Low</span>
+        <a class="link-green" href="/map" style="font-size:11px;">Open map →</a>
+      </div>
+    </div>
+    <div class="map-wrap" id="map"></div>
+  </div>
+
+  <div class="card" style="display:flex; flex-direction:column; overflow:hidden;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px 10px;">
+      <span class="card-title">Recent Scans</span>
+      <a class="link-green" href="/scans" style="font-size:11px;">View all →</a>
+    </div>
+    <div style="display:flex; gap:8px; padding:0 14px 12px; border-bottom:1px solid var(--line);">
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9a9a92" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+        <input id="q" placeholder="Search by date or severity…">
+      </div>
+      <select id="sort" class="select">
+        <option value="newest">Newest</option>
+        <option value="oldest">Oldest</option>
+        <option value="risk">Severity: High→Low</option>
+        <option value="images">Most images</option>
+      </select>
+    </div>
+    <div style="flex:1; overflow-y:auto;" id="recent"></div>
+  </div>
+</div>
+
+<!-- SEVERITY DISTRIBUTION -->
+<div class="card" style="margin:16px 28px 0; padding:18px 22px 22px;">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+    <span class="card-title">Severity Distribution</span>
+    <span class="mono" style="font-size:11px; color:var(--muted-3);" id="dist-note"></span>
+  </div>
+  <div class="bars" id="bars"></div>
+  <div class="bar-labels"><span>High</span><span>Medium</span><span>Low</span></div>
+</div>
+
+<script src="/static/console.js"></script>
+<script>
+renderNav("dashboard");
+let SUMMARY = null;
+let selectedPin = null;
+
+function drawMap() {
+  const el = document.getElementById("map");
+  const pins = gpsToPercent(SUMMARY.pins);
+  document.getElementById("pin-count").textContent = `· ${pins.length} marker${pins.length === 1 ? "" : "s"}`;
+  let html = terrainSvg("wf") + '<div class="map-grid-overlay"></div>';
+  for (const p of pins) {
+    const c = SEV[p.severity].color;
+    html += `
+      <div class="pin ${selectedPin === p.id ? "selected" : ""}" data-id="${esc(p.id)}"
+           style="left:${p.x}%; top:${p.y}%;">
+        <span class="pin-ring" style="background:${c};"></span>
+        <span class="pin-dot" style="background:${c}; box-shadow:0 0 0 2px ${c}55, 0 2px 8px rgba(0,0,0,.55);"></span>
+      </div>`;
+  }
+  const sel = pins.find(p => p.id === selectedPin);
+  if (sel) {
+    const below = sel.y < 38;
+    const leftPct = Math.min(Math.max(sel.x, 17), 83);
+    const c = SEV[sel.severity].color;
+    html += `
+      <div class="map-popup" data-popup style="left:${leftPct}%; top:${sel.y}%;
+           transform:${below ? "translate(-50%, 22px)" : "translate(-50%, calc(-100% - 22px))"};">
+        <span class="badge ${sel.severity}">${SEV[sel.severity].label.toUpperCase()} SEVERITY</span>
+        <div style="font-size:13px; font-weight:600; margin-top:7px; line-height:1.25;">${esc(sel.id)}</div>
+        <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">${fmtCoord(sel.lat, sel.lon)}</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:11px; padding-top:10px; border-top:1px solid #eee;">
+          <span class="mono" style="font-size:11px; color:var(--muted);">${esc(sel.date)} · ${esc(sel.time)}</span>
+          <a class="link-green" style="font-size:11px;" href="/scans/${encodeURIComponent(sel.id)}">Open →</a>
+        </div>
+        <div class="tail" style="${below
+          ? "top:-6px; border-left:1px solid #e2e0d6; border-top:1px solid #e2e0d6;"
+          : "bottom:-6px; border-right:1px solid #e2e0d6; border-bottom:1px solid #e2e0d6;"}"></div>
+      </div>`;
+  }
+  if (!pins.length) {
+    html += '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cdd6c0; opacity:.5; font-size:12px;" class="mono">No GPS-tagged scans yet</div>';
+  }
+  html += '<div class="map-attr">Stylized terrain · pins from image GPS · not to scale</div>';
+  el.innerHTML = html;
+}
+
+// One delegated listener: pin click selects/toggles, background click clears.
+document.getElementById("map").addEventListener("click", e => {
+  const pinEl = e.target.closest(".pin");
+  if (pinEl) {
+    selectedPin = pinEl.dataset.id === selectedPin ? null : pinEl.dataset.id;
+  } else if (e.target.closest("[data-popup]")) {
+    return; // clicks inside the popup keep it open
+  } else if (selectedPin === null) {
+    return;
+  } else {
+    selectedPin = null;
+  }
+  drawMap();
+});
+
+function drawRecent() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const sort = document.getElementById("sort").value;
+  const rank = { high: 3, medium: 2, low: 1 };
+  let list = [...SUMMARY.recent];
+  if (q) list = list.filter(s => (s.id + " " + s.date + " " + (s.severity || "")).toLowerCase().includes(q));
+  if (sort === "oldest") list.reverse();
+  else if (sort === "risk") list.sort((a, b) => (rank[b.severity] || 0) - (rank[a.severity] || 0));
+  else if (sort === "images") list.sort((a, b) => b.images - a.images);
+  document.getElementById("recent").innerHTML = list.map(s => `
+    <a href="/scans/${encodeURIComponent(s.id)}" style="display:flex; align-items:center; justify-content:space-between; padding:13px 18px; border-bottom:1px solid var(--line-soft);"
+       onmouseover="this.style.background='#faf9f4'" onmouseout="this.style.background=''">
+      <div style="display:flex; flex-direction:column; line-height:1.3;">
+        <span style="font-size:13px; font-weight:600;">${esc(s.date)} <span class="mono" style="font-weight:400; color:var(--muted-2);">${esc(s.time)}</span></span>
+        <span class="mono" style="font-size:11px; color:var(--muted-2);">${esc(s.id)} · ${s.images} images · ${esc(countsLine(s.detections_by_type))}</span>
+      </div>
+      ${sevBadge(s.severity)}
+    </a>`).join("") ||
+    '<div class="empty">No scans yet — run a detection from the Scans page.</div>';
+}
+
+function drawBars() {
+  const c = SUMMARY.severity_counts;
+  const max = Math.max(c.high, c.medium, c.low, 1);
+  const bar = (n, color) => `
+    <div class="bar-col">
+      <span class="bar-num" style="color:${color};">${n}</span>
+      <div class="bar" style="height:${Math.max((n / max) * 100, 2)}%; background:${color};"></div>
+    </div>`;
+  document.getElementById("bars").innerHTML =
+    bar(c.high, "#E05555") + bar(c.medium, "#F0A500") + bar(c.low, "#3A9A3A");
+  document.getElementById("dist-note").textContent =
+    `${SUMMARY.flagged_scans} flagged scan${SUMMARY.flagged_scans === 1 ? "" : "s"} · display severity from dead-tree density + flame/smoke`;
+}
+
+async function load() {
+  SUMMARY = await api("/api/summary");
+  document.getElementById("st-total").textContent = SUMMARY.total_scans;
+  document.getElementById("st-high").textContent = SUMMARY.high_risk;
+  document.getElementById("st-flagged").textContent = SUMMARY.flagged_scans;
+  if (SUMMARY.last_scan) {
+    document.getElementById("st-last").textContent = `${SUMMARY.last_scan.date} · ${SUMMARY.last_scan.time}`;
+    document.getElementById("st-last-note").textContent = SUMMARY.last_scan.id;
+  } else {
+    document.getElementById("st-last").textContent = "—";
+    document.getElementById("st-last-note").textContent = "no runs yet";
+  }
+  drawMap(); drawRecent(); drawBars();
+}
+
+document.getElementById("q").addEventListener("input", drawRecent);
+document.getElementById("sort").addEventListener("change", drawRecent);
+load().catch(e => toast("Failed to load dashboard: " + e.message));
+</script>
+</body>
+</html>

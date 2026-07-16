@@ -106,7 +106,7 @@ def main() -> int:
 
     if args.pdf:
         from src.wildfire.llm import generate_analysis, resolve_model_id
-        from src.wildfire.report import build_report, build_summary_text
+        from src.wildfire.report import build_report, build_summary_text, timestamped_report_path
 
         print("\nBuilding PDF report...")
         ai_text = None
@@ -118,7 +118,7 @@ def main() -> int:
                 print(f"  LM Studio: {aerr}")
         else:
             print(f"  LM Studio: {err}")
-        pdf = build_report(batch, out_dir / "report.pdf", ai_text=ai_text)
+        pdf = build_report(batch, timestamped_report_path(out_dir), ai_text=ai_text)
         print(f"  Wrote {pdf} ({pdf.stat().st_size // 1024} KB)")
     return 0
 

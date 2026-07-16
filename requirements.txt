@@ -8,6 +8,7 @@
 
 ultralytics>=8.3
 sahi>=0.12.1
+onnxruntime>=1.20        # ONNX detector (Azure Custom Vision export); swap in onnxruntime-gpu for CUDA
 pillow>=10
 numpy
 opencv-python
@@ -15,6 +16,10 @@ exifread
 reportlab>=4
 gradio>=6
 gradio_image_annotation
+fastapi                  # operations console (offline web UI)
+uvicorn
+python-multipart         # console image uploads
+pywebview                # native app window (--desktop / installed shortcut)
 requests
 huggingface_hub
 tqdm

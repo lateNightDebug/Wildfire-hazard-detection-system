@@ -83,9 +83,11 @@ def build_confirmed_from_annotations(batch: BatchResult, ann_state: dict, out_di
         try:
             bgr = cv2.cvtColor(load_rgb_uint8(im.path), cv2.COLOR_RGB2BGR)
             stem = Path(im.path).stem
-            annotated_path = str(out_dir / f"{stem}_confirmed.jpg")
+            (out_dir / "annotated").mkdir(parents=True, exist_ok=True)
+            (out_dir / "gridmaps").mkdir(parents=True, exist_ok=True)
+            annotated_path = str(out_dir / "annotated" / f"{stem}_confirmed.jpg")
             cv2.imwrite(annotated_path, draw_boxes(bgr, dets), JPEG_Q)
-            density_path = str(out_dir / f"{stem}_confirmed_grid.jpg")
+            density_path = str(out_dir / "gridmaps" / f"{stem}_confirmed.jpg")
             cv2.imwrite(density_path, grid_density_map(bgr, dets), JPEG_Q)
         except Exception:
             pass

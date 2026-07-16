@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings — Wildfire Console</title>
+<link rel="stylesheet" href="/static/console.css">
+<style>
+  .form-row { display:grid; grid-template-columns: 180px 1fr; gap:12px; align-items:center; }
+  .form-row label { font-size:12px; font-weight:600; color:var(--text-2); }
+  .form-row .hint { font-size:11px; color:var(--muted-3); margin-top:3px; }
+  .input {
+    font-size:12px; font-family:inherit; color:var(--text); background:#fff;
+    border:1px solid var(--border-2); border-radius:8px; padding:8px 10px; outline:none; width:100%;
+  }
+  .input:focus { border-color: var(--green-line); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+  .switch { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; }
+</style>
+</head>
+<body>
+<nav id="topnav" class="topnav"></nav>
+
+<div class="page" style="max-width:1200px;">
+  <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+    <div>
+      <h1 class="h1">Settings</h1>
+      <p class="sub">Saved to <span class="mono">config/settings.json</span> — detection changes apply to the next run</p>
+    </div>
+    <button id="save" class="btn btn-primary">Save settings</button>
+  </div>
+
+  <div class="grid2">
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <!-- MODELS -->
+      <div class="card" style="padding:18px 20px;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:4px;">Detection models</div>
+        <div style="font-size:11px; color:var(--muted-3); margin-bottom:12px;">
+          Toggle which detectors run. Files live in <span class="mono">models/</span>; drop your
+          Custom Vision ONNX export there and it becomes available.
+        </div>
+        <div id="model-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+
+      <!-- DETECTION -->
+      <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13px; font-weight:600;">Detection</div>
+        <div class="form-row">
+          <label>Confidence threshold</label>
+          <input class="input" id="conf_threshold" type="number" step="0.05" min="0.01" max="0.99">
+        </div>
+        <div class="form-row">
+          <label>Slice size (px)</label>
+          <div>
+            <input class="input" id="slice_size" type="number" step="64" min="256" max="4096">
+            <div class="hint">Tile edge for big drone frames — 1024 works well for 5280×3956</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Slice overlap</label>
+          <input class="input" id="overlap_ratio" type="number" step="0.05" min="0" max="0.9">
+        </div>
+        <div class="form-row">
+          <label>Full-frame pass</label>
+          <label class="switch"><input type="checkbox" id="perform_standard_pred"> also run once un-sliced (catches large objects)</label>
+        </div>
+      </div>
+
+      <!-- SEVERITY -->
+      <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13px; font-weight:600;">Display severity</div>
+        <div style="font-size:11px; color:var(--muted-3);">
+          UI-only badge. Flame is always High, Smoke at least Medium; dead-tree density decides the rest.
+        </div>
+        <div class="form-row">
+          <label>High ≥ (dead trees / image)</label>
+          <input class="input" id="severity_deadtrees_high" type="number" step="1" min="1">
+        </div>
+        <div class="form-row">
+          <label>Medium ≥ (dead trees / image)</label>
+          <input class="input" id="severity_deadtrees_medium" type="number" step="1" min="0.5">
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <!-- REPORT / LLM -->
+      <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13px; font-weight:600;">Report · AI analysis (LM Studio)</div>
+        <div class="form-row">
+          <label>LM Studio URL</label>
+          <input class="input" id="lmstudio_url" type="text" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label>Model id</label>
+          <input class="input" id="lmstudio_model" type="text" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <label>Report language</label>
+          <input class="input" id="language" type="text">
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button id="lm-test" class="btn-quiet" style="padding:7px 12px;">Test connection</button>
+          <span id="lm-status" style="font-size:12px; color:var(--muted-2);">Offline is fine — the PDF just skips the AI section.</span>
+        </div>
+      </div>
+
+      <!-- ONNX -->
+      <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13px; font-weight:600;">Custom ONNX model (Azure Custom Vision export)</div>
+        <div style="font-size:11px; color:var(--muted-3);">
+          If your trained model returns empty/garbled boxes, flip normalize to "0-1" or channel order to "BGR".
+        </div>
+        <div class="form-row">
+          <label>Input size fallback</label>
+          <input class="input" id="onnx_input_size" type="number" step="32" min="64" max="4096">
+        </div>
+        <div class="form-row">
+          <label>Normalize</label>
+          <select class="input" id="onnx_normalize">
+            <option value="0-255">0-255 (Custom Vision default)</option>
+            <option value="0-1">0-1</option>
+            <option value="imagenet">imagenet</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Channel order</label>
+          <select class="input" id="onnx_channel_order"><option>RGB</option><option>BGR</option></select>
+        </div>
+        <div class="form-row">
+          <label>NMS IoU</label>
+          <input class="input" id="onnx_nms_iou" type="number" step="0.05" min="0.05" max="0.95">
+        </div>
+      </div>
+
+      <!-- PATHS -->
+      <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13px; font-weight:600;">Paths</div>
+        <div class="form-row">
+          <label>Mission folder</label>
+          <input class="input" id="source_dir" type="text" spellcheck="false" placeholder="set from the Scans page, or paste here">
+        </div>
+        <div class="form-row">
+          <label>Outputs</label>
+          <div class="mono" style="font-size:11px; color:var(--muted-2); word-break:break-all;" id="output-dir"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/console.js"></script>
+<script>
+renderNav("settings");
+const FIELDS = ["conf_threshold", "slice_size", "overlap_ratio", "severity_deadtrees_high",
+                "severity_deadtrees_medium", "lmstudio_url", "lmstudio_model", "language",
+                "onnx_input_size", "onnx_normalize", "onnx_channel_order", "onnx_nms_iou",
+                "source_dir"];
+let MODELS = [];
+
+function drawModels(models) {
+  MODELS = models;
+  document.getElementById("model-list").innerHTML = models.map(m => `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px solid var(--border-2); border-radius:10px; padding:10px 12px; background:#fdfdf9;">
+      <div style="line-height:1.35; min-width:0;">
+        <div style="font-size:12px; font-weight:600;">${esc(m.label)}</div>
+        <div style="font-size:11px; color:${m.ready ? "var(--green-2)" : "var(--muted-3)"};">
+          <span class="mono">${esc(m.key)}</span> · ${m.ready ? "Ready" : esc(m.note)}
+        </div>
+      </div>
+      <label class="switch"><input type="checkbox" data-model="${esc(m.key)}" ${m.enabled ? "checked" : ""}> enabled</label>
+    </div>`).join("");
+}
+
+async function load() {
+  const d = await api("/api/settings");
+  for (const f of FIELDS) {
+    const el = document.getElementById(f);
+    if (el) el.value = d.values[f] ?? "";
+  }
+  document.getElementById("perform_standard_pred").checked = !!d.values.perform_standard_pred;
+  document.getElementById("output-dir").textContent = d.output_dir;
+  drawModels(d.models);
+}
+
+document.getElementById("save").addEventListener("click", async () => {
+  const btn = document.getElementById("save");
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    const values = {};
+    for (const f of FIELDS) {
+      const el = document.getElementById(f);
+      if (el) values[f] = el.value;
+    }
+    values.perform_standard_pred = document.getElementById("perform_standard_pred").checked;
+    const model_enabled = {};
+    document.querySelectorAll("[data-model]").forEach(cb => model_enabled[cb.dataset.model] = cb.checked);
+    const res = await api("/api/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values, model_enabled }),
+    });
+    drawModels(res.models);
+    toast("Settings saved. Detection changes apply to the next run.");
+  } catch (e) {
+    toast("Save failed: " + e.message, 8000);
+  } finally {
+    btn.disabled = false; btn.textContent = "Save settings";
+  }
+});
+
+document.getElementById("lm-test").addEventListener("click", async () => {
+  const st = document.getElementById("lm-status");
+  st.textContent = "Testing…";
+  try {
+    const r = await api("/api/lmstudio-test", { method: "POST" });
+    st.textContent = r.up ? `Connected ✓ models: ${r.models.join(", ") || "(none loaded)"}`
+                          : `Not reachable: ${r.error}`;
+    st.style.color = r.up ? "var(--green-2)" : "var(--red)";
+  } catch (e) {
+    st.textContent = "Test failed: " + e.message;
+    st.style.color = "var(--red)";
+  }
+});
+
+load().catch(e => toast("Failed to load settings: " + e.message));
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports — Wildfire Console</title>
+<link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+<nav id="topnav" class="topnav"></nav>
+
+<div class="page">
+  <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+    <div>
+      <h1 class="h1">Reports</h1>
+      <p class="sub">Every generated PDF, newest first — regenerating never overwrites an old report</p>
+    </div>
+    <select id="f-sev" class="select">
+      <option value="all">Severity: All</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+      <option value="none">No detections</option>
+    </select>
+  </div>
+
+  <div class="card" style="overflow:hidden;">
+    <div style="display:grid; grid-template-columns:210px 1fr 90px 110px 100px 130px; gap:12px; padding:11px 20px; background:#faf9f4; border-bottom:1px solid var(--line); font-size:11px; font-weight:600; letter-spacing:.4px; color:var(--muted-3);">
+      <span>GENERATED</span><span>SCAN / CONTENTS</span><span style="text-align:right;">SIZE</span>
+      <span>SEVERITY</span><span>REVIEWED</span><span style="text-align:right;">ACTION</span>
+    </div>
+    <div id="rows"></div>
+  </div>
+</div>
+
+<script src="/static/console.js"></script>
+<script>
+renderNav("reports");
+let REPORTS = [];
+
+function draw() {
+  const fs = document.getElementById("f-sev").value;
+  let list = REPORTS;
+  if (fs !== "all") list = list.filter(r => (r.severity || "none") === fs);
+  document.getElementById("rows").innerHTML = list.map(r => `
+    <div style="display:grid; grid-template-columns:210px 1fr 90px 110px 100px 130px; gap:12px; align-items:center; padding:13px 20px; border-bottom:1px solid var(--line-soft);"
+         onmouseover="this.style.background='#faf9f4'" onmouseout="this.style.background=''">
+      <div style="line-height:1.3;">
+        <div class="mono" style="font-size:12px; font-weight:600;">${esc(r.created.replace("T", " · "))}</div>
+        <div class="mono" style="font-size:10px; color:var(--muted-3);">${esc(r.file)}</div>
+      </div>
+      <div style="line-height:1.3; min-width:0;">
+        <a class="scan-id" style="font-size:12px;" href="/scans/${encodeURIComponent(r.run_id)}">${esc(r.run_id)}</a>
+        <div style="font-size:11px; color:var(--muted-2);">${r.images} images · ${esc(countsLine(r.detections_by_type))}</div>
+      </div>
+      <span class="mono" style="font-size:12px; text-align:right; color:var(--text-2);">${r.size_kb} KB</span>
+      <div>${sevBadge(r.severity)}</div>
+      <span style="font-size:12px; color:${r.reviewed ? "var(--green-2)" : "var(--muted-3)"};">${r.reviewed ? "✓ reviewed" : "proposals"}</span>
+      <div style="text-align:right;">
+        <a class="link-green" style="font-size:12px;" href="${esc(r.url)}" target="_blank" rel="noopener">Open PDF</a>
+      </div>
+    </div>`).join("") ||
+    '<div class="empty">No reports yet — open a scan and click Generate Report.</div>';
+}
+
+document.getElementById("f-sev").addEventListener("change", draw);
+api("/api/reports").then(d => { REPORTS = d.reports; draw(); })
+  .catch(e => toast("Failed to load reports: " + e.message));
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review — Wildfire Console</title>
+<link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+<nav id="topnav" class="topnav"></nav>
+
+<div class="page">
+  <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+    <div>
+      <h1 class="h1">Review</h1>
+      <p class="sub">All detection results by flight — confirm each run's boxes to build the training set</p>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <select id="f-review" class="select">
+        <option value="all">Review: All</option>
+        <option value="pending">Needs review</option>
+        <option value="reviewed">Reviewed</option>
+      </select>
+      <select id="f-sev" class="select">
+        <option value="all">Severity: All</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+        <option value="none">No detections</option>
+      </select>
+    </div>
+  </div>
+  <div id="days"></div>
+</div>
+
+<script src="/static/console.js"></script>
+<script>
+renderNav("review");
+let SCANS = [];
+
+function card(s) {
+  const thumbs = (s.preview_urls || []).map(u =>
+    `<img src="${esc(u)}" style="width:96px; height:66px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4;">`).join("");
+  const state = s.reviewed
+    ? '<span class="badge low">REVIEWED</span>'
+    : '<span class="badge medium">NEEDS REVIEW</span>';
+  return `
+    <a href="/scans/${encodeURIComponent(s.id)}" class="card" style="display:block; padding:14px 16px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <span class="scan-id" style="font-size:12px;">${esc(s.id)}</span>
+        <div style="display:flex; gap:6px;">${state}${sevBadge(s.severity)}</div>
+      </div>
+      <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:4px;">
+        ${esc(s.time)} · ${s.images} images · ${esc(countsLine(s.detections_by_type))}
+      </div>
+      <div style="display:flex; gap:6px; margin-top:10px; overflow:hidden;">${thumbs ||
+        '<div style="width:96px; height:66px; border-radius:6px; background:#e6e4da;"></div>'}</div>
+      <div style="display:flex; justify-content:space-between; margin-top:10px;">
+        <span class="link-green" style="font-size:12px;">${s.reviewed ? "Open / edit boxes →" : "Review boxes →"}</span>
+        ${s.report_url ? `<span style="font-size:11px; color:var(--muted-3);">report ready</span>` : ""}
+      </div>
+    </a>`;
+}
+
+function draw() {
+  const fr = document.getElementById("f-review").value;
+  const fs = document.getElementById("f-sev").value;
+  let list = SCANS.filter(s => s.status === "processed");
+  if (fr === "pending") list = list.filter(s => !s.reviewed);
+  if (fr === "reviewed") list = list.filter(s => s.reviewed);
+  if (fs !== "all") list = list.filter(s => (s.severity || "none") === fs);
+
+  const byDay = new Map();
+  for (const s of list) {
+    const key = s.date || "unknown";
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(s);
+  }
+  let html = "";
+  for (const [day, scans] of byDay.entries()) {
+    const pending = scans.filter(s => !s.reviewed).length;
+    html += `
+      <div style="font-size:11px; font-weight:600; letter-spacing:.4px; color:var(--muted-2); margin:18px 0 10px;">
+        ${esc(day).toUpperCase()} — ${scans.length} run${scans.length === 1 ? "" : "s"}${pending ? ` · ${pending} needs review` : " · all reviewed"}
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:12px;">
+        ${scans.map(card).join("")}
+      </div>`;
+  }
+  document.getElementById("days").innerHTML = html ||
+    '<div class="empty card">No runs match the filters — run a detection from the Scans page first.</div>';
+}
+
+document.getElementById("f-review").addEventListener("change", draw);
+document.getElementById("f-sev").addEventListener("change", draw);
+api("/api/scans").then(r => { SCANS = r.scans; draw(); })
+  .catch(e => toast("Failed to load runs: " + e.message));
+</script>
+</body>
+</html>

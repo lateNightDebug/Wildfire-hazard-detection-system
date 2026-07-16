@@ -11,6 +11,7 @@ Run:  python -m src.wildfire.app    (opens http://127.0.0.1:7860)
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from datetime import datetime
@@ -31,7 +32,7 @@ from .detectors import build_detectors
 from .llm import generate_analysis, health_check, resolve_model_id
 from .models import ensure_yolo_sources
 from .pipeline import run_batch
-from .report import build_report, build_summary_text
+from .report import build_report, build_summary_text, timestamped_report_path
 from .review import (
     REVIEW_LABELS, build_confirmed_from_annotations, save_review_labels, to_annotator,
 )
@@ -70,6 +71,8 @@ def run_detection(files, progress=gr.Progress()):
     run_dir = settings.output_path / f"review_{ts}"  # one folder per run, no overwrite
     batch = run_batch(paths, detectors, settings, progress=cb,
                       out_dir=run_dir, batch_label=f"review_{ts}")
+    # Persist raw proposals so the operations console can list this run.
+    (run_dir / "batch.json").write_text(json.dumps(batch.to_dict(), indent=2), encoding="utf-8")
 
     progress(0.95, desc="Preparing review...")
     ann: dict = {}
@@ -117,7 +120,7 @@ def generate_report_ui(ann_value, cur, ann, batch, progress=gr.Progress()):
         ai_text, _ = generate_analysis(build_summary_text(confirmed), settings.lmstudio_url, model)
 
     progress(0.85, desc="Writing PDF...")
-    pdf = build_report(confirmed, out_dir / "report.pdf", ai_text=ai_text)
+    pdf = build_report(confirmed, timestamped_report_path(out_dir), ai_text=ai_text)
     n = confirmed.stats["total_detections"]
     note = "" if model else "  (LM Studio offline — AI analysis omitted.)"
     return str(pdf), (f"Report built with {n} confirmed detection(s). "
@@ -192,7 +195,10 @@ def build_ui():
 
 
 def main() -> None:
-    build_ui().launch(server_name="127.0.0.1", server_port=7860, inbrowser=True, share=False)
+    # WILDFIRE_NO_BROWSER=1 is set when the operations console spawns this app —
+    # the console opens its own tab, so a second one here would be a duplicate.
+    inbrowser = os.environ.get("WILDFIRE_NO_BROWSER") != "1"
+    build_ui().launch(server_name="127.0.0.1", server_port=7860, inbrowser=inbrowser, share=False)
 
 
 if __name__ == "__main__":
