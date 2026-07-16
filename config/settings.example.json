@@ -4,6 +4,7 @@
   "output_dir": "outputs",
   "models_dir": "models",
   "source_dir": "",
+  "map_tiles_dir": "map",
   "language": "English",
 
   "conf_threshold": 0.30,

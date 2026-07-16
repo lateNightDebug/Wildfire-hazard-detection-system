@@ -144,6 +144,20 @@
         </div>
       </div>
 
+      <!-- OFFLINE MAP -->
+      <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:10px;">
+        <div style="font-size:13px; font-weight:600;">Offline map</div>
+        <div style="font-size:11px; color:var(--muted-3);" id="map-status">checking…</div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button id="dl-map" class="btn-quiet" style="padding:7px 12px;">Download map for scanned area</button>
+          <span id="dl-map-status" class="mono" style="font-size:11px; color:var(--muted-3);"></span>
+        </div>
+        <div style="font-size:11px; color:#a0a098;">
+          Needs internet once: satellite tiles for the area covered by your scans (Esri, offline-export
+          permitted). Roads/rivers overlays: <span class="mono">python -m scripts.fetch_map_overlays --bbox …</span>
+        </div>
+      </div>
+
       <!-- PATHS -->
       <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
         <div style="font-size:13px; font-weight:600;">Paths</div>
@@ -219,6 +233,34 @@ document.getElementById("save").addEventListener("click", async () => {
     toast("Save failed: " + e.message, 8000);
   } finally {
     btn.disabled = false; btn.textContent = "Save settings";
+  }
+});
+
+api("/api/map-info").then(i => {
+  document.getElementById("map-status").textContent = i.tiles
+    ? `Tiles cached: zoom ${i.min_zoom}–${i.max_zoom}${i.overlays ? " · roads/water overlays present" : ""}`
+    : "No offline tiles yet — the map uses the stylized fallback.";
+}).catch(() => {});
+
+document.getElementById("dl-map").addEventListener("click", async () => {
+  const btn = document.getElementById("dl-map");
+  const st = document.getElementById("dl-map-status");
+  btn.disabled = true;
+  try {
+    await api("/api/map/download", { method: "POST", headers: { "Content-Type": "application/json" },
+                                     body: JSON.stringify({}) });
+    const timer = setInterval(async () => {
+      const s = await api("/api/map/download/status").catch(() => null);
+      if (!s) return;
+      st.textContent = `${s.done || 0}/${s.total || "?"} tiles${s.failed ? ` · ${s.failed} failed` : ""}`;
+      if (s.state === "done" || s.state === "error") {
+        clearInterval(timer); btn.disabled = false;
+        if (s.state === "error") st.textContent = "failed: " + (s.error || "");
+        else document.getElementById("map-status").textContent = "Tiles downloaded — open the Map page.";
+      }
+    }, 1500);
+  } catch (e) {
+    st.textContent = e.message; btn.disabled = false;
   }
 });
 

@@ -51,9 +51,6 @@ function renderNav(active) {
     `<div class="nav-tab soon">${label}<span class="soon-pill">SOON</span></div>`;
   document.getElementById("topnav").innerHTML = `
     <div class="brand">
-      <div class="brand-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2c1.5 3.5-1.5 5-1.5 7.5 0 1 .6 1.8 1.5 1.8s1.5-.8 1.5-1.8c0-.7-.2-1.3-.4-1.8 1.7 1.1 3.4 3 3.4 5.8a4.5 4.5 0 1 1-9 0C7 13 9.5 11 9.5 8.5c0-2 1-4.5 2.5-6.5z" fill="#fff"></path></svg>
-      </div>
       <div style="display:flex; flex-direction:column; line-height:1.15;">
         <span class="brand-name">Wildfire Hazard Detection System</span>
         <span class="brand-sub">Operations Console · Offline</span>
@@ -135,4 +132,62 @@ function fmtCoord(lat, lon) {
   if (lat == null) return "no GPS";
   const ns = lat >= 0 ? "N" : "S", ew = lon >= 0 ? "E" : "W";
   return `${Math.abs(lat).toFixed(3)}°${ns}, ${Math.abs(lon).toFixed(3)}°${ew}`;
+}
+
+/* ---------------------------------------------------------------- shared map
+   Site-based Leaflet map used by Dashboard and the Map page (same data, same
+   look). preferCanvas is essential: thousands of SVG overlay paths freeze the
+   desktop WebView; the canvas renderer handles them easily. */
+function sitePopupHtml(s, i) {
+  const members = (s.members || []).slice(0, 4).map(m =>
+    `<div class="mono" style="font-size:10px; color:#6b6b63;">${esc(m.name)} · <a href="/scans/${encodeURIComponent(m.run_id)}" style="color:#2D5A2D; font-weight:600;">open run</a></div>`).join("");
+  const thumb = ((s.members || []).find(m => m.thumb) || {}).thumb;
+  return `
+    <div style="display:flex; gap:10px; max-width:250px;">
+      ${thumb ? `<img src="${esc(thumb)}" style="width:70px; height:70px; object-fit:cover; border-radius:6px; border:1px solid #ddd; flex-shrink:0;">` : ""}
+      <div style="min-width:0;">
+        <span class="badge ${s.severity}">${SEV[s.severity].label.toUpperCase()}</span>
+        <div style="font-size:12px; font-weight:600; margin-top:5px;">Site ${i + 1} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
+        <div class="mono" style="font-size:10px; color:#8a8a82;">${fmtCoord(s.lat, s.lon)}</div>
+      </div>
+    </div>
+    <div style="margin-top:8px; border-top:1px solid #eee; padding-top:6px;">${members}</div>`;
+}
+
+function initLeafletSites(el, sites, info, opts = {}) {
+  el.innerHTML = '<div style="position:absolute; inset:0; background:#161a1b;" class="leaflet-host"></div>';
+  const map = L.map(el.querySelector(".leaflet-host"), {
+    preferCanvas: true, zoomControl: opts.zoomControl !== false,
+  });
+  L.tileLayer("/tiles/{z}/{x}/{y}", {
+    minZoom: info.min_zoom, maxZoom: info.max_zoom,
+    attribution: esc(info.attribution) + " · offline cache",
+  }).addTo(map);
+  if (opts.overlays && info.overlays) {
+    fetch("/map-overlays.geojson").then(r => r.json()).then(gj => {
+      L.geoJSON(gj, {
+        smoothFactor: 1.5,
+        style: f => {
+          const p = f.properties || {};
+          if (p.natural === "water") return { color: "#2c5566", weight: 1, fillColor: "#1f3d4a", fillOpacity: .55 };
+          if (p.waterway) return { color: "#356a7e", weight: 2, opacity: .8 };
+          if (["motorway", "trunk", "primary", "secondary"].includes(p.highway))
+            return { color: "#d9cda6", weight: 2.5, opacity: .8 };
+          return { color: "#cfc09a", weight: 1.2, opacity: .5, dashArray: "4 3" };
+        },
+      }).addTo(map);
+    }).catch(() => {});
+  }
+  const markers = sites.map((s, i) => {
+    const c = SEV[s.severity].color;
+    const m = L.circleMarker([s.lat, s.lon], {
+      radius: 8 + Math.min(s.count, 10), color: "#fff", weight: 2,
+      fillColor: c, fillOpacity: .9,
+    }).addTo(map).bindPopup(sitePopupHtml(s, i));
+    if (opts.onSelect) m.on("click", () => opts.onSelect(i));
+    return m;
+  });
+  if (sites.length) map.fitBounds(L.latLngBounds(sites.map(s => [s.lat, s.lon])).pad(0.25));
+  else map.setView([51.1, -115.4], info.min_zoom || 10);
+  return { map, markers };
 }

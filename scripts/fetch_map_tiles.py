@@ -7,7 +7,7 @@ a real zoomable satellite map with zero network use.
 
 Tiles come from Esri "World Imagery" (their tile service permits export for
 offline/disconnected use, unlike Google/Bing whose ToS forbid tile caching).
-Saved as map_tiles/{z}/{x}/{y}.jpg + attribution.txt. Existing tiles are
+Saved as map/{z}/{x}/{y}.jpg + attribution.txt. Existing tiles are
 skipped, so re-running resumes an interrupted download.
 """
 
@@ -41,7 +41,7 @@ def main() -> int:
     ap.add_argument("--bbox", nargs=4, type=float, required=True,
                     metavar=("LAT_MIN", "LON_MIN", "LAT_MAX", "LON_MAX"))
     ap.add_argument("--zoom", nargs=2, type=int, default=[10, 16], metavar=("MIN", "MAX"))
-    ap.add_argument("--out", default="map_tiles")
+    ap.add_argument("--out", default="map")
     ap.add_argument("--delay", type=float, default=0.1, help="seconds between requests")
     args = ap.parse_args()
 

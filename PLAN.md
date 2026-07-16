@@ -21,6 +21,15 @@
 - [x] **道路分类 + 河流湖泊**:`scripts/fetch_map_overlays.py` 从 OSM 抓 GeoJSON(主干道/小径分级、河流、湖泊),离线渲染在卫星图上。作业区已抓 2880 条要素
 - [x] **GPS 检测去重·第 1 层(站点聚类)**:全部带检测图片按 ≤40m 聚成"站点",地图按站点打标(计数徽章 + 最高严重度 + 成员图片列表),页面明示"N 张图合并为 M 个站点"
 
+## 第三批·真机反馈修复(2026-07-16 完成)
+
+- [x] **Leaflet 地图卡死修复**:根因 = 2880 条道路/水系用 SVG 渲染拖死 WebView2;切换 Canvas 渲染器(preferCanvas),实测 SVG path 归零、导航可正常离开地图页
+- [x] **Dashboard 地图与 Map 同步**:两页共用同一份站点数据(/api/map-data)和同一 Leaflet 组件,有瓦片同时切真卫星图
+- [x] **Scans 大数据量二次筛选**:按天折叠(最新天默认展开);超 250 张的连续大航次自动切 part 1/N(实测 1558 张 → 7 段);每段可 "Select images" 展开缩略图勾选后只检测选中的
+- [x] **界面内下载区域地图**:Map 页无瓦片时出横幅按钮、Settings 页 Offline map 卡;bbox 自动取自所有 scan 的 GPS,后台下载带进度
+- [x] **目录整洁**:map_tiles/ → **map/**(瓦片 + overlays.geojson 都在里面);models/ = 模型;outputs/ = 运行结果
+- [x] **删除"水滴"logo**
+
 ## 等待外部条件
 
 - [ ] **接入训练好的 dead_tree.onnx**(模型还在 Azure 训练;放进 models/ + Settings 页调预处理开关)

@@ -7,10 +7,7 @@
 <link rel="stylesheet" href="/static/console.css">
 <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
 <style>
-  #leaflet-map { position:absolute; inset:0; background:#161a1b; }
-  .site-badge {
-    background:#fff; border-radius:10px; padding:1px 6px; font:600 10px 'IBM Plex Mono',monospace;
-  }
+  .site-badge { background:#fff; border-radius:10px; padding:1px 6px; font:600 10px 'IBM Plex Mono',monospace; }
   .leaflet-popup-content { font-family:'IBM Plex Sans',system-ui,sans-serif; margin:10px 12px; }
   .leaflet-container { font: inherit; }
 </style>
@@ -31,7 +28,12 @@
         <span><span class="legend-dot" style="background:#3A9A3A;"></span> Low</span>
       </div>
     </div>
-    <div class="map-wrap" id="map" style="min-height:0;"></div>
+    <div id="tiles-banner" style="display:none; padding:10px 16px; background:#f4ecd6; border-bottom:1px solid #e6dab8; font-size:12px; color:#6b5a2a;">
+      No offline satellite tiles for this area yet.
+      <button id="dl-tiles" class="btn-quiet" style="padding:5px 10px; margin-left:8px;">Download map for current area</button>
+      <span id="dl-tiles-status" class="mono" style="font-size:11px; margin-left:8px;"></span>
+    </div>
+    <div class="map-wrap" id="map" style="min-height:0; position:relative;"></div>
   </div>
 
   <div class="card" style="display:flex; flex-direction:column; overflow:hidden;">
@@ -47,66 +49,8 @@
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script>
 renderNav("map");
-let INFO = null, SITES = [], leafletMap = null, markers = [], selectedSite = -1;
-
+let INFO = null, SITES = [], LMAP = null, selectedSite = -1;
 const rank = { high: 3, medium: 2, low: 1 };
-
-function popupHtml(s, i) {
-  const members = s.members.slice(0, 4).map(m =>
-    `<div class="mono" style="font-size:10px; color:#6b6b63;">${esc(m.name)} · <a href="/scans/${encodeURIComponent(m.run_id)}" style="color:#2D5A2D; font-weight:600;">open run</a></div>`).join("");
-  const thumb = (s.members.find(m => m.thumb) || {}).thumb;
-  return `
-    <div style="display:flex; gap:10px; max-width:250px;">
-      ${thumb ? `<img src="${esc(thumb)}" style="width:70px; height:70px; object-fit:cover; border-radius:6px; border:1px solid #ddd; flex-shrink:0;">` : ""}
-      <div style="min-width:0;">
-        <span class="badge ${s.severity}">${SEV[s.severity].label.toUpperCase()}</span>
-        <div style="font-size:12px; font-weight:600; margin-top:5px;">Site ${i + 1} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
-        <div class="mono" style="font-size:10px; color:#8a8a82;">${fmtCoord(s.lat, s.lon)}</div>
-      </div>
-    </div>
-    <div style="margin-top:8px; border-top:1px solid #eee; padding-top:6px;">${members}</div>`;
-}
-
-/* -------------------------------------------------- Leaflet (real tiles) */
-function initLeaflet() {
-  document.getElementById("map").innerHTML = '<div id="leaflet-map"></div>';
-  leafletMap = L.map("leaflet-map", { zoomControl: true, attributionControl: true });
-  L.tileLayer("/tiles/{z}/{x}/{y}", {
-    minZoom: INFO.min_zoom, maxZoom: INFO.max_zoom,
-    attribution: esc(INFO.attribution) + " · offline cache",
-  }).addTo(leafletMap);
-
-  if (INFO.overlays) {
-    fetch("/map-overlays.geojson").then(r => r.json()).then(gj => {
-      L.geoJSON(gj, {
-        style: f => {
-          const p = f.properties || {};
-          if (p.natural === "water") return { color: "#2c5566", weight: 1, fillColor: "#1f3d4a", fillOpacity: .55 };
-          if (p.waterway) return { color: "#356a7e", weight: 2, opacity: .8 };
-          if (["motorway", "trunk", "primary", "secondary"].includes(p.highway))
-            return { color: "#d9cda6", weight: 2.5, opacity: .8 };
-          return { color: "#cfc09a", weight: 1.2, opacity: .5, dashArray: "4 3" };
-        },
-      }).addTo(leafletMap);
-    }).catch(() => {});
-  }
-
-  markers = SITES.map((s, i) => {
-    const c = SEV[s.severity].color;
-    const m = L.circleMarker([s.lat, s.lon], {
-      radius: 8 + Math.min(s.count, 10), color: "#fff", weight: 2,
-      fillColor: c, fillOpacity: .9,
-    }).addTo(leafletMap).bindPopup(popupHtml(s, i));
-    m.on("click", () => { selectedSite = i; drawList(); });
-    return m;
-  });
-
-  if (SITES.length) {
-    leafletMap.fitBounds(L.latLngBounds(SITES.map(s => [s.lat, s.lon])).pad(0.25));
-  } else {
-    leafletMap.setView([51.1, -115.4], INFO.min_zoom || 10);
-  }
-}
 
 /* -------------------------------------------------- fallback (no tiles) */
 function initFallback() {
@@ -128,7 +72,7 @@ function initFallback() {
     html += `
       <div class="map-popup" data-popup style="left:${Math.min(Math.max(sel.x, 17), 83)}%; top:${sel.y}%;
            transform:${below ? "translate(-50%, 22px)" : "translate(-50%, calc(-100% - 22px))"};">
-        ${popupHtml(SITES[selectedSite], selectedSite)}
+        ${sitePopupHtml(SITES[selectedSite], selectedSite)}
         <div class="tail" style="${below
           ? "top:-6px; border-left:1px solid #e2e0d6; border-top:1px solid #e2e0d6;"
           : "bottom:-6px; border-right:1px solid #e2e0d6; border-bottom:1px solid #e2e0d6;"}"></div>
@@ -137,12 +81,12 @@ function initFallback() {
   if (!pins.length) {
     html += '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cdd6c0; opacity:.5; font-size:12px;" class="mono">No GPS-tagged detections yet</div>';
   }
-  html += '<div class="map-attr">Stylized terrain — run scripts/fetch_map_tiles.py for real offline satellite tiles</div>';
+  html += '<div class="map-attr">Stylized terrain — download tiles above for the real satellite map</div>';
   el.innerHTML = html;
 }
 
 document.getElementById("map").addEventListener("click", e => {
-  if (leafletMap) return; // leaflet handles its own events
+  if (LMAP) return; // leaflet handles its own events
   const pinEl = e.target.closest(".pin");
   if (pinEl) selectedSite = +pinEl.dataset.id === selectedSite ? -1 : +pinEl.dataset.id;
   else if (e.target.closest("[data-popup]")) return;
@@ -167,9 +111,9 @@ function drawList() {
   document.querySelectorAll("[data-site]").forEach(el =>
     el.addEventListener("click", () => {
       selectedSite = +el.dataset.site;
-      if (leafletMap) {
-        leafletMap.panTo([SITES[selectedSite].lat, SITES[selectedSite].lon]);
-        markers[selectedSite].openPopup();
+      if (LMAP) {
+        LMAP.map.panTo([SITES[selectedSite].lat, SITES[selectedSite].lon]);
+        LMAP.markers[selectedSite].openPopup();
         drawList();
       } else {
         initFallback(); drawList();
@@ -177,13 +121,40 @@ function drawList() {
     }));
 }
 
+/* -------------------------------------------------- tile download */
+document.getElementById("dl-tiles").addEventListener("click", async () => {
+  const btn = document.getElementById("dl-tiles");
+  const st = document.getElementById("dl-tiles-status");
+  btn.disabled = true;
+  try {
+    await api("/api/map/download", { method: "POST", headers: { "Content-Type": "application/json" },
+                                     body: JSON.stringify({}) });
+    const timer = setInterval(async () => {
+      const s = await api("/api/map/download/status").catch(() => null);
+      if (!s) return;
+      st.textContent = `${s.done || 0}/${s.total || "?"} tiles${s.failed ? ` · ${s.failed} failed` : ""}`;
+      if (s.state === "done") { clearInterval(timer); location.reload(); }
+      if (s.state === "error") { clearInterval(timer); st.textContent = "failed: " + (s.error || ""); btn.disabled = false; }
+    }, 1500);
+  } catch (e) {
+    st.textContent = e.message;
+    btn.disabled = false;
+  }
+});
+
 Promise.all([api("/api/map-info"), api("/api/map-data")]).then(([info, md]) => {
   INFO = info; SITES = md.sites;
   document.getElementById("site-count").textContent =
     `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}`;
   document.getElementById("dedup-note").textContent =
     `${md.points} flagged image${md.points === 1 ? "" : "s"} merged into ${SITES.length} site${SITES.length === 1 ? "" : "s"} (≤${md.radius_m} m) — overlap dedup, tier 1`;
-  if (INFO.tiles) initLeaflet(); else initFallback();
+  if (INFO.tiles) {
+    LMAP = initLeafletSites(document.getElementById("map"), SITES, INFO,
+                            { overlays: true, onSelect: i => { selectedSite = i; drawList(); } });
+  } else {
+    document.getElementById("tiles-banner").style.display = "";
+    initFallback();
+  }
   drawList();
 }).catch(e => toast("Failed to load map: " + e.message));
 </script>

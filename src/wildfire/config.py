@@ -84,7 +84,7 @@ class Settings:
     output_dir: str = "outputs"
     models_dir: str = "models"
     source_dir: str = ""  # mission folder (SD-card dump) the console ingests
-    map_tiles_dir: str = "map_tiles"  # offline satellite tiles ({z}/{x}/{y}.jpg)
+    map_tiles_dir: str = "map"  # offline map data: tiles {z}/{x}/{y}.jpg + overlays.geojson
 
     # --- report ---
     language: str = "English"

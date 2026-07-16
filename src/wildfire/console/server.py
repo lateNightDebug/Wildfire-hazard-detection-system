@@ -44,6 +44,12 @@ class SourceBody(BaseModel):
 
 class SessionBody(BaseModel):
     session: str
+    names: list[str] = []  # optional subset of image names within the session
+
+
+class TilesBody(BaseModel):
+    zmin: int = 12
+    zmax: int = 16
 
 
 class LabelsBody(BaseModel):
@@ -273,6 +279,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404, "no overlays downloaded")
         return FileResponse(f, media_type="application/geo+json")
 
+    @app.post("/api/map/download")
+    def api_map_download(body: TilesBody):
+        """Download tiles for the area covered by all scans (internet required)."""
+        from . import tiles as tiles_mod
+
+        job = getattr(app.state, "tile_job", None)
+        if job and job.get("state") == "running":
+            return JSONResponse(job, status_code=409)
+        pts = [tuple(s["gps"]) for s in data.discover_scans(app.state.settings) if s["gps"]]
+        bbox = tiles_mod.bbox_from_points(pts)
+        if bbox is None:
+            raise HTTPException(400, "no GPS-tagged scans yet — cannot infer the area")
+        zmin, zmax = max(3, body.zmin), min(17, max(body.zmin, body.zmax))
+        job = {"state": "running", "done": 0, "total": len(tiles_mod.tile_list(bbox, zmin, zmax)),
+               "failed": 0, "bbox": list(bbox)}
+        app.state.tile_job = job
+
+        def work() -> None:
+            try:
+                def cb(done: int, total: int, failed: int) -> None:
+                    job.update(done=done, total=total, failed=failed)
+
+                result = tiles_mod.download_tiles(bbox, zmin, zmax, _tiles_root(), progress=cb)
+                job.update(state="done", **result)
+            except Exception as e:
+                job.update(state="error", error=f"{type(e).__name__}: {e}")
+
+        import threading
+
+        threading.Thread(target=work, name="tile-download", daemon=True).start()
+        return JSONResponse(job, status_code=202)
+
+    @app.get("/api/map/download/status")
+    def api_map_download_status():
+        return getattr(app.state, "tile_job", None) or {"state": "idle"}
+
     # ------------------------------------------------------- reports
     @app.get("/api/reports")
     def api_reports():
@@ -365,18 +407,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             s.save()  # persists so the console reopens on this folder
         return _source_payload(folder)
 
-    @app.post("/api/detect-session")
-    def api_detect_session(body: SessionBody):
+    def _find_session(session_id: str) -> dict:
         folder = app.state.settings.source_dir
         if not folder or not Path(folder).is_dir():
             raise HTTPException(400, "no mission folder configured")
         sessions = ingest.group_sessions(_scan_cached(folder)["images"])
-        match = next((s for s in sessions if s["id"] == body.session), None)
+        match = next((s for s in sessions if s["id"] == session_id), None)
         if match is None:
-            raise HTTPException(404, f"session '{body.session}' not found (folder changed?)")
-        job = app.state.jobs.start_detection([Path(p) for p in match["paths"]],
-                                             app.state.settings)
-        return JSONResponse({"job": job.to_dict(), "images": match["count"]}, status_code=202)
+            raise HTTPException(404, f"session '{session_id}' not found (folder changed?)")
+        return match
+
+    @app.get("/api/source/session/{session_id}")
+    def api_session_images(session_id: str, thumbs: int = 100):
+        """Image list of one flight for the pre-detection picker (thumbs capped)."""
+        match = _find_session(session_id)
+        thumb_dir = app.state.settings.output_path / "_thumbs"
+        images = []
+        for i, (name, path) in enumerate(zip(match["names"], match["paths"])):
+            t = ingest.make_thumb(path, thumb_dir, max_px=240) if i < thumbs else None
+            images.append({"name": name,
+                           "thumb_url": f"/outputs/_thumbs/{t.name}" if t else None})
+        return {"session": session_id, "images": images}
+
+    @app.post("/api/detect-session")
+    def api_detect_session(body: SessionBody):
+        match = _find_session(body.session)
+        paths = match["paths"]
+        if body.names:  # subset picked in the UI
+            wanted = set(body.names)
+            paths = [p for n, p in zip(match["names"], match["paths"]) if n in wanted]
+            if not paths:
+                raise HTTPException(400, "none of the selected images are in this session")
+        job = app.state.jobs.start_detection([Path(p) for p in paths], app.state.settings)
+        return JSONResponse({"job": job.to_dict(), "images": len(paths)}, status_code=202)
 
     # ------------------------------------------------------- review app
     @app.get("/api/review/status")

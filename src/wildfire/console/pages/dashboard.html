@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dashboard — Wildfire Console</title>
 <link rel="stylesheet" href="/static/console.css">
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<style>
+  .leaflet-popup-content { font-family:'IBM Plex Sans',system-ui,sans-serif; margin:10px 12px; }
+  .leaflet-container { font: inherit; }
+</style>
 </head>
 <body>
 <nav id="topnav" class="topnav"></nav>
@@ -91,15 +96,23 @@
 </div>
 
 <script src="/static/console.js"></script>
+<script src="/static/vendor/leaflet/leaflet.js"></script>
 <script>
 renderNav("dashboard");
-let SUMMARY = null;
+let SUMMARY = null, INFO = null, SITES = [];
 let selectedPin = null;
 
+// Same data and component as the Map page: offline tiles when cached,
+// stylized fallback otherwise — the two maps can no longer disagree.
 function drawMap() {
   const el = document.getElementById("map");
-  const pins = gpsToPercent(SUMMARY.pins);
-  document.getElementById("pin-count").textContent = `· ${pins.length} marker${pins.length === 1 ? "" : "s"}`;
+  document.getElementById("pin-count").textContent =
+    `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}`;
+  if (INFO && INFO.tiles) {
+    initLeafletSites(el, SITES, INFO, { overlays: false });
+    return;
+  }
+  const pins = gpsToPercent(SITES.map((s, i) => ({ ...s, id: String(i) })));
   let html = terrainSvg("wf") + '<div class="map-grid-overlay"></div>';
   for (const p of pins) {
     const c = SEV[p.severity].color;
@@ -114,22 +127,10 @@ function drawMap() {
   if (sel) {
     const below = sel.y < 38;
     const leftPct = Math.min(Math.max(sel.x, 17), 83);
-    const c = SEV[sel.severity].color;
     html += `
       <div class="map-popup" data-popup style="left:${leftPct}%; top:${sel.y}%;
            transform:${below ? "translate(-50%, 22px)" : "translate(-50%, calc(-100% - 22px))"};">
-        <div style="display:flex; gap:11px;">
-          ${sel.thumb ? `<img src="${esc(sel.thumb)}" style="width:74px; height:74px; object-fit:cover; border-radius:7px; border:1px solid #ddd; flex-shrink:0;">` : ""}
-          <div style="flex:1; min-width:0;">
-            <span class="badge ${sel.severity}">${SEV[sel.severity].label.toUpperCase()} SEVERITY</span>
-            <div style="font-size:13px; font-weight:600; margin-top:7px; line-height:1.25; overflow:hidden; text-overflow:ellipsis;">${esc(sel.id)}</div>
-            <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">${fmtCoord(sel.lat, sel.lon)}</div>
-          </div>
-        </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:11px; padding-top:10px; border-top:1px solid #eee;">
-          <span class="mono" style="font-size:11px; color:var(--muted);">${esc(sel.date)} · ${esc(sel.time)}</span>
-          <a class="link-green" style="font-size:11px;" href="/scans/${encodeURIComponent(sel.id)}">Open →</a>
-        </div>
+        ${sitePopupHtml(SITES[+sel.id], +sel.id)}
         <div class="tail" style="${below
           ? "top:-6px; border-left:1px solid #e2e0d6; border-top:1px solid #e2e0d6;"
           : "bottom:-6px; border-right:1px solid #e2e0d6; border-bottom:1px solid #e2e0d6;"}"></div>
@@ -138,17 +139,18 @@ function drawMap() {
   if (!pins.length) {
     html += '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cdd6c0; opacity:.5; font-size:12px;" class="mono">No GPS-tagged scans yet</div>';
   }
-  html += '<div class="map-attr">Stylized terrain · pins from image GPS · not to scale</div>';
+  html += '<div class="map-attr">Stylized terrain · open Map to download offline satellite tiles</div>';
   el.innerHTML = html;
 }
 
-// One delegated listener: pin click selects/toggles, background click clears.
+// One delegated listener for the fallback mode only.
 document.getElementById("map").addEventListener("click", e => {
+  if (INFO && INFO.tiles) return; // leaflet handles its own events
   const pinEl = e.target.closest(".pin");
   if (pinEl) {
     selectedPin = pinEl.dataset.id === selectedPin ? null : pinEl.dataset.id;
   } else if (e.target.closest("[data-popup]")) {
-    return; // clicks inside the popup keep it open
+    return;
   } else if (selectedPin === null) {
     return;
   } else {
@@ -193,7 +195,10 @@ function drawBars() {
 }
 
 async function load() {
-  SUMMARY = await api("/api/summary");
+  const [summary, info, md] = await Promise.all([
+    api("/api/summary"), api("/api/map-info"), api("/api/map-data"),
+  ]);
+  SUMMARY = summary; INFO = info; SITES = md.sites;
   document.getElementById("st-total").textContent = SUMMARY.total_scans;
   document.getElementById("st-high").textContent = SUMMARY.high_risk;
   document.getElementById("st-flagged").textContent = SUMMARY.flagged_scans;

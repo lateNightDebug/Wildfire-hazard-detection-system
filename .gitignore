@@ -36,4 +36,4 @@ sample_data/*.tiff
 sample_data/*.png
 
 # Offline map data (downloaded per operating area)
-map_tiles/
+map/

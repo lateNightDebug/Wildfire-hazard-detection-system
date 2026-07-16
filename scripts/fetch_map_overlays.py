@@ -3,7 +3,7 @@
     python -m scripts.fetch_map_overlays --bbox 50.95 -115.55 51.25 -115.25
 
 Queries OpenStreetMap's Overpass API for highways (classified), waterways and
-water bodies inside the bbox and writes map_tiles/overlays.geojson, which the
+water bodies inside the bbox and writes map/overlays.geojson, which the
 console map renders on top of the satellite tiles — fully offline afterwards.
 """
 
@@ -53,7 +53,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Download OSM roads/water overlays as GeoJSON.")
     ap.add_argument("--bbox", nargs=4, type=float, required=True,
                     metavar=("LAT_MIN", "LON_MIN", "LAT_MAX", "LON_MAX"))
-    ap.add_argument("--out", default="map_tiles/overlays.geojson")
+    ap.add_argument("--out", default="map/overlays.geojson")
     args = ap.parse_args()
 
     s, w, n, e = args.bbox

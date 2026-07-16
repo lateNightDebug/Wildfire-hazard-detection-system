@@ -149,6 +149,78 @@ async function loadModels() {
 /* ------------------------------------------------------------- mission folder */
 const PART_ICON = { Morning: "🌅", Midday: "☀️", Afternoon: "🌤", Evening: "🌆", Night: "🌙" };
 
+async function queueDetection(btn, sessionId, names) {
+  btn.disabled = true; btn.textContent = "Queuing…";
+  try {
+    const res = await api("/api/detect-session", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session: sessionId, names: names || [] }),
+    });
+    document.getElementById("queued-text").textContent =
+      `Detection queued — ${res.job.id} now processing (${res.images} images)`;
+    document.getElementById("queued-banner").style.visibility = "visible";
+    startPolling();
+  } catch (e) {
+    toast("Failed to start detection: " + e.message, 8000);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* Expandable per-flight image picker: choose a subset before analysing. */
+async function togglePicker(sess, holder, btn) {
+  if (holder.dataset.open === "1") {
+    holder.style.display = "none"; holder.dataset.open = "0";
+    btn.textContent = "Select images"; return;
+  }
+  holder.style.display = ""; holder.dataset.open = "1";
+  btn.textContent = "Hide";
+  if (!holder.dataset.loaded) {
+    holder.innerHTML = '<div class="mono" style="font-size:11px; color:var(--muted-3); padding:8px;">Loading image list…</div>';
+    try {
+      const d = await api(`/api/source/session/${encodeURIComponent(sess)}`);
+      holder.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px; padding:6px 2px;">
+          <label class="mono" style="font-size:11px; cursor:pointer;"><input type="checkbox" data-all checked> all</label>
+          <span class="mono" style="font-size:11px; color:var(--muted-3);" data-count></span>
+          <span style="flex:1;"></span>
+          <button class="btn btn-primary" style="padding:5px 12px; font-size:12px;" data-run>Detect selected</button>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:6px; max-height:260px; overflow-y:auto; padding:4px 2px;">
+          ${d.images.map(im => `
+            <label style="cursor:pointer; text-align:center;">
+              ${im.thumb_url
+                ? `<img src="${esc(im.thumb_url)}" style="width:100%; height:64px; object-fit:cover; border-radius:5px; border:1px solid #d2d0c4;">`
+                : `<div style="height:64px; border-radius:5px; background:#e6e4da; display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--muted-3);">no preview</div>`}
+              <div class="mono" style="font-size:9px; color:var(--muted-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <input type="checkbox" data-name="${esc(im.name)}" checked style="vertical-align:middle;"> ${esc(im.name)}
+              </div>
+            </label>`).join("")}
+        </div>`;
+      holder.dataset.loaded = "1";
+      const update = () => {
+        const n = holder.querySelectorAll("[data-name]:checked").length;
+        holder.querySelector("[data-count]").textContent = `${n} selected`;
+        holder.querySelector("[data-run]").disabled = n === 0;
+      };
+      holder.querySelector("[data-all]").addEventListener("change", e => {
+        holder.querySelectorAll("[data-name]").forEach(cb => cb.checked = e.target.checked);
+        update();
+      });
+      holder.addEventListener("change", update);
+      update();
+      holder.querySelector("[data-run]").addEventListener("click", async e => {
+        const names = [...holder.querySelectorAll("[data-name]:checked")].map(cb => cb.dataset.name);
+        await queueDetection(e.target, sess, names);
+        e.target.textContent = "Detect selected";
+      });
+    } catch (e) {
+      holder.innerHTML = `<div class="empty" style="padding:10px;">${esc(e.message)}</div>`;
+      holder.dataset.loaded = "";
+    }
+  }
+}
+
 function drawSessions(src) {
   const box = document.getElementById("src-sessions");
   document.getElementById("src-ignored").textContent = src.exists
@@ -162,57 +234,55 @@ function drawSessions(src) {
     box.innerHTML = '<div class="empty" style="padding:14px;">No images found in this folder.</div>';
     return;
   }
-  // group sessions by day, newest day first (sessions are already newest-first)
+  // group by day, newest first; only the latest day starts expanded so a
+  // month-sized folder stays scannable
   const byDay = new Map();
   for (const s of src.sessions) {
     if (!byDay.has(s.day_key)) byDay.set(s.day_key, { day: s.day, sessions: [] });
     byDay.get(s.day_key).sessions.push(s);
   }
   let html = "";
+  let first = true;
   for (const { day, sessions } of byDay.values()) {
     const total = sessions.reduce((a, s) => a + s.count, 0);
     html += `
-      <div style="font-size:11px; font-weight:600; letter-spacing:.4px; color:var(--muted-2); margin:14px 0 8px;">
-        ${esc(day).toUpperCase()} — ${sessions.length} flight${sessions.length === 1 ? "" : "s"} · ${total} images
-      </div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px;">`;
+      <details ${first ? "open" : ""} style="margin-top:10px;">
+        <summary style="cursor:pointer; font-size:11px; font-weight:600; letter-spacing:.4px; color:var(--muted-2); padding:4px 0;">
+          ${esc(day).toUpperCase()} — ${sessions.length} flight${sessions.length === 1 ? "" : "s"} · ${total} images
+        </summary>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px; margin-top:8px;">`;
     for (const s of sessions) {
       html += `
-        <div style="display:flex; gap:11px; border:1px solid var(--border-2); border-radius:10px; padding:10px; background:#fdfdf9;">
-          ${s.thumb_url
-            ? `<img src="${esc(s.thumb_url)}" style="width:78px; height:58px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4; flex-shrink:0;">`
-            : `<div style="width:78px; height:58px; border-radius:6px; background:#e6e4da; flex-shrink:0;"></div>`}
-          <div style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
-            <div>
-              <div style="font-size:13px; font-weight:600;">${PART_ICON[s.part] || ""} ${esc(s.part)} flight</div>
-              <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:2px;">${esc(s.start)}–${esc(s.end)} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
-            </div>
-            <div style="display:flex; justify-content:flex-end;">
-              <button class="btn btn-outline" style="padding:5px 12px; font-size:12px;" data-session="${esc(s.id)}">Detect</button>
+        <div style="border:1px solid var(--border-2); border-radius:10px; padding:10px; background:#fdfdf9;">
+          <div style="display:flex; gap:11px;">
+            ${s.thumb_url
+              ? `<img src="${esc(s.thumb_url)}" style="width:78px; height:58px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4; flex-shrink:0;">`
+              : `<div style="width:78px; height:58px; border-radius:6px; background:#e6e4da; flex-shrink:0;"></div>`}
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
+              <div>
+                <div style="font-size:13px; font-weight:600;">${PART_ICON[s.part] || ""} ${esc(s.part)} flight</div>
+                <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:2px;">${esc(s.start)}–${esc(s.end)} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
+              </div>
+              <div style="display:flex; justify-content:flex-end; gap:6px;">
+                <button class="btn-quiet" style="padding:5px 10px; font-size:12px;" data-pick="${esc(s.id)}">Select images</button>
+                <button class="btn btn-outline" style="padding:5px 12px; font-size:12px;" data-session="${esc(s.id)}">Detect all</button>
+              </div>
             </div>
           </div>
+          <div data-picker="${esc(s.id)}" style="display:none; margin-top:8px; border-top:1px solid var(--line);"></div>
         </div>`;
     }
-    html += "</div>";
+    html += "</div></details>";
+    first = false;
   }
   box.innerHTML = html;
   box.querySelectorAll("[data-session]").forEach(btn => btn.addEventListener("click", async () => {
-    btn.disabled = true; btn.textContent = "Queuing…";
-    try {
-      const res = await api("/api/detect-session", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session: btn.dataset.session }),
-      });
-      document.getElementById("queued-text").textContent =
-        `Detection queued — ${res.job.id} now processing (${res.images} images)`;
-      document.getElementById("queued-banner").style.visibility = "visible";
-      startPolling();
-    } catch (e) {
-      toast("Failed to start detection: " + e.message, 8000);
-    } finally {
-      btn.disabled = false; btn.textContent = "Detect";
-    }
+    await queueDetection(btn, btn.dataset.session);
+    btn.textContent = "Detect all";
   }));
+  box.querySelectorAll("[data-pick]").forEach(btn => btn.addEventListener("click", () =>
+    togglePicker(btn.dataset.pick,
+                 box.querySelector(`[data-picker="${btn.dataset.pick}"]`), btn)));
 }
 
 async function loadSource() {

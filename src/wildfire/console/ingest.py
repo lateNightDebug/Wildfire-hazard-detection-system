@@ -25,6 +25,8 @@ from ..imageio_utils import SUPPORTED_EXTS
 # (start hour incl., end hour excl., label); anything else is Night.
 TIME_OF_DAY = [(5, 11, "Morning"), (11, 14, "Midday"), (14, 18, "Afternoon"), (18, 23, "Evening")]
 SESSION_GAP_MINUTES = 45  # a longer pause between shots starts a new session
+MAX_SESSION_IMAGES = 250  # bigger continuous shoots are split into parts —
+# a 1500-image mapping flight is unmanageable as one card / one detection job
 
 
 def time_of_day(dt: datetime) -> str:
@@ -79,26 +81,32 @@ def scan_source(folder: str | Path) -> dict:
     return {"folder": str(folder), "images": images, "ignored": ignored}
 
 
-def group_sessions(images: list[dict], gap_minutes: int = SESSION_GAP_MINUTES) -> list[dict]:
-    """Time-sorted images -> sessions (new day or >gap since previous shot)."""
+def group_sessions(images: list[dict], gap_minutes: int = SESSION_GAP_MINUTES,
+                   max_images: int = MAX_SESSION_IMAGES) -> list[dict]:
+    """Time-sorted images -> sessions (new day / >gap), big shoots split in parts."""
     sessions: list[dict] = []
     current: list[dict] = []
 
     def flush() -> None:
         if not current:
             return
-        start, end = current[0]["time"], current[-1]["time"]
-        sessions.append({
-            "id": start.strftime("%Y%m%d_%H%M%S"),
-            "day": start.strftime("%b %d, %Y"),
-            "day_key": start.strftime("%Y-%m-%d"),
-            "part": time_of_day(start),
-            "start": start.strftime("%H:%M"),
-            "end": end.strftime("%H:%M"),
-            "count": len(current),
-            "paths": [im["path"] for im in current],
-            "names": [im["name"] for im in current],
-        })
+        chunks = [current[i:i + max_images] for i in range(0, len(current), max_images)]
+        for n, chunk in enumerate(chunks, start=1):
+            start, end = chunk[0]["time"], chunk[-1]["time"]
+            label = time_of_day(current[0]["time"])
+            if len(chunks) > 1:
+                label += f" · part {n}/{len(chunks)}"
+            sessions.append({
+                "id": start.strftime("%Y%m%d_%H%M%S"),
+                "day": start.strftime("%b %d, %Y"),
+                "day_key": start.strftime("%Y-%m-%d"),
+                "part": label,
+                "start": start.strftime("%H:%M"),
+                "end": end.strftime("%H:%M"),
+                "count": len(chunk),
+                "paths": [im["path"] for im in chunk],
+                "names": [im["name"] for im in chunk],
+            })
         current.clear()
 
     prev: Optional[datetime] = None
