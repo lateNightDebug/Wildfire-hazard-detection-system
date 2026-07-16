@@ -65,6 +65,7 @@ _EDITABLE_SETTINGS: dict = {
     "output_dir": str,  # /outputs mount is bound at startup -> needs app restart
     "conf_threshold": lambda v: max(0.01, min(0.99, float(v))),
     "slice_size": lambda v: max(256, min(4096, int(v))),
+    "preprocess_max_mb": lambda v: max(0.0, min(50.0, float(v))),
     "overlap_ratio": lambda v: max(0.0, min(0.9, float(v))),
     "perform_standard_pred": bool,
     "severity_deadtrees_high": lambda v: max(0.1, float(v)),
@@ -235,6 +236,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if job is None:
             raise HTTPException(404, "unknown job")
         return job.to_dict()
+
+    # ------------------------------------------------------- map
+    def _tiles_root() -> Path:
+        return app.state.settings._resolve(app.state.settings.map_tiles_dir)
+
+    @app.get("/api/map-data")
+    def api_map_data(radius: float = 40.0):
+        return data.map_data(app.state.settings, radius_m=max(5.0, min(500.0, radius)))
+
+    @app.get("/api/map-info")
+    def api_map_info():
+        root = _tiles_root()
+        zooms = sorted(int(p.name) for p in root.glob("[0-9]*") if p.is_dir()) if root.is_dir() else []
+        attribution = ""
+        attr_file = root / "attribution.txt"
+        if attr_file.exists():
+            attribution = attr_file.read_text(encoding="utf-8").strip()
+        overlays = root / "overlays.geojson"
+        return {"tiles": bool(zooms), "min_zoom": zooms[0] if zooms else None,
+                "max_zoom": zooms[-1] if zooms else None,
+                "attribution": attribution or "Offline imagery tiles",
+                "overlays": overlays.exists()}
+
+    @app.get("/tiles/{z}/{x}/{y}")
+    def api_tile(z: int, x: int, y: int):
+        tile = _tiles_root() / str(z) / str(x) / f"{y}.jpg"
+        if not tile.exists():
+            raise HTTPException(404, "tile not cached")
+        return FileResponse(tile, media_type="image/jpeg")
+
+    @app.get("/map-overlays.geojson")
+    def api_overlays():
+        f = _tiles_root() / "overlays.geojson"
+        if not f.exists():
+            raise HTTPException(404, "no overlays downloaded")
+        return FileResponse(f, media_type="application/geo+json")
 
     # ------------------------------------------------------- reports
     @app.get("/api/reports")

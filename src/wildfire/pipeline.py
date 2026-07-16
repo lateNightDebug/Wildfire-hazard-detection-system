@@ -18,7 +18,7 @@ import numpy as np
 from .annotate import draw_boxes, grid_density_map
 from .config import Settings
 from .device import device_label
-from .gps import extract_altitude, extract_camera, extract_timestamp, get_location
+from .gps import extract_altitude, extract_camera, extract_timestamp, get_location, mrk_location
 from .imageio_utils import PASSTHROUGH_EXTS, load_rgb_uint8
 from .risk import batch_stats
 from .types import BatchResult, Detection, ImageResult
@@ -29,13 +29,31 @@ ProgressFn = Optional[Callable[[int, int, str], None]]
 JPEG_QUALITY = 88
 
 
-def _detection_source(path: Path, rgb: np.ndarray, cache_dir: Path) -> str:
-    """Path to feed SAHI: original for common formats, else a normalized PNG."""
-    if path.suffix.lower() in PASSTHROUGH_EXTS:
+def _detection_source(path: Path, rgb: np.ndarray, cache_dir: Path, max_mb: float = 0.0) -> str:
+    """Path to feed the detectors.
+
+    Common formats pass through unless they exceed `max_mb`, in which case a
+    resolution-preserving JPEG (descending quality ladder) is cached and used —
+    smaller files decode faster in every detector, which is where a 200-image
+    flight spends its CPU time. TIFF/exotic formats are normalized the same way.
+    `max_mb <= 0` disables compression (TIFFs then get a lossless PNG copy).
+    """
+    passthrough = path.suffix.lower() in PASSTHROUGH_EXTS
+    limit = max_mb * 1024 * 1024
+    if passthrough and (max_mb <= 0 or path.stat().st_size <= limit):
         return str(path)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    out = cache_dir / f"{path.stem}_det.png"
-    cv2.imwrite(str(out), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    if max_mb <= 0:  # legacy TIFF path: lossless normalize
+        out = cache_dir / f"{path.stem}_det.png"
+        cv2.imwrite(str(out), bgr)
+        return str(out)
+    out = cache_dir / f"{path.stem}_det.jpg"
+    for quality in (85, 75, 65, 55, 45):
+        ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
+        if ok and (buf.nbytes <= limit or quality == 45):
+            out.write_bytes(buf.tobytes())
+            break
     return str(out)
 
 
@@ -66,7 +84,8 @@ def process_image(
         H, W = rgb.shape[:2]
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
-        det_src = _detection_source(path, rgb, out_dir / "_cache")
+        det_src = _detection_source(path, rgb, out_dir / "_cache",
+                                    max_mb=settings.preprocess_max_mb)
         detections = _run_detectors(detectors, det_src)
 
         # One subfolder per artifact kind — a 200-image flight would otherwise
@@ -82,10 +101,15 @@ def process_image(
             grid_density_map(bgr, detections, rows=settings.grid_rows, cols=settings.grid_cols),
         )
 
+        # RTK .MRK beside the photos beats EXIF GPS (cm vs m grade) when present.
+        rtk = mrk_location(path)
+        gps = (rtk[0], rtk[1]) if rtk else get_location(path)
+        altitude = rtk[2] if rtk and rtk[2] is not None else extract_altitude(path)
+
         return ImageResult(
             path=str(path), name=name, width=W, height=H,
             detections=detections,
-            gps=get_location(path), altitude=extract_altitude(path), timestamp=extract_timestamp(path),
+            gps=gps, altitude=altitude, timestamp=extract_timestamp(path),
             camera=extract_camera(path),
             flagged=bool(detections),
             orig_display_path=orig_path, annotated_path=annotated_path, density_path=density_path,

@@ -65,6 +65,13 @@
           <input class="input" id="overlap_ratio" type="number" step="0.05" min="0" max="0.9">
         </div>
         <div class="form-row">
+          <label>Pre-compress to (MB)</label>
+          <div>
+            <input class="input" id="preprocess_max_mb" type="number" step="0.5" min="0" max="50">
+            <div class="hint">Oversized photos are re-encoded (same resolution) before detection — faster batches. 0 = off.</div>
+          </div>
+        </div>
+        <div class="form-row">
           <label>Full-frame pass</label>
           <label class="switch"><input type="checkbox" id="perform_standard_pred"> also run once un-sliced (catches large objects)</label>
         </div>
@@ -159,7 +166,8 @@
 <script src="/static/console.js"></script>
 <script>
 renderNav("settings");
-const FIELDS = ["conf_threshold", "slice_size", "overlap_ratio", "severity_deadtrees_high",
+const FIELDS = ["conf_threshold", "slice_size", "overlap_ratio", "preprocess_max_mb",
+                "severity_deadtrees_high",
                 "severity_deadtrees_medium", "lmstudio_url", "lmstudio_model", "language",
                 "onnx_input_size", "onnx_normalize", "onnx_channel_order", "onnx_nms_iou",
                 "source_dir", "output_dir"];

@@ -7,7 +7,9 @@ generates a detailed PDF report for field teams.
 - **Layer 1 — Detection** *(implemented)*: drone images → SAHI slicing (handles 5280×3956
   images) → YOLO11 (dead-tree primary + flame/smoke secondary) → annotated images
   (dead tree = yellow, flame = red, smoke = orange; nearby boxes merged) + a grid
-  density (hazard-count) map + EXIF GPS.
+  density (hazard-count) map + GPS (DJI RTK **.MRK** beside the photos is preferred —
+  cm-grade — falling back to EXIF). Oversized photos are re-encoded under
+  `preprocess_max_mb` (default 2 MB, resolution kept) before detection for faster batches.
   No risk classification — detections are simply flagged with their GPS location.
 - **Layer 2 — Report** *(implemented)*: detection results → LM Studio local API (Qwen 3.5 9B)
   → written analysis → ReportLab PDF (landscape: cover + per-image pages with
@@ -38,7 +40,16 @@ generates a detailed PDF report for field teams.
     re-rendered. Reports generate from confirmed boxes when a review exists.
   - **Review** — all runs grouped by day with thumbnails and needs-review/reviewed
     status: the data overview for working through a backlog.
-  - **Map** — full-screen hazard map of every GPS-tagged run.
+  - **Map** — full-screen hazard map. With offline tiles downloaded it is a real
+    zoomable satellite map (Leaflet) with OSM roads/rivers/lakes overlays;
+    otherwise it falls back to a stylized canvas. Flagged images are merged
+    into **sites** (≤40 m clustering) so overlapping shots of the same trees
+    appear once. Prepare an area before going offline:
+    ```bash
+    python -m scripts.fetch_map_tiles    --bbox 51.05 -115.48 51.17 -115.28 --zoom 11 16
+    python -m scripts.fetch_map_overlays --bbox 51.05 -115.48 51.17 -115.28
+    ```
+    (Esri World Imagery permits offline export; Google/Bing tiles do not.)
   - **Reports** — every generated PDF across all runs, newest first.
   - **Settings** — edit detection parameters, severity thresholds, model on/off
     toggles, ONNX preprocessing and LM Studio connection (with a test button)

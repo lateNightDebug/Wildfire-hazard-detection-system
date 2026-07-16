@@ -288,6 +288,39 @@ def test_report_paths_never_collide(tmp_path):
     assert a.read_bytes() == b"pdf1"
 
 
+def test_cluster_sites_dedups_nearby_images():
+    from src.wildfire.console.data import cluster_sites
+
+    pts = [
+        {"lat": 51.10000, "lon": -115.40000, "severity": "low", "run_id": "a", "name": "1.jpg", "thumb": None},
+        {"lat": 51.10010, "lon": -115.40010, "severity": "high", "run_id": "a", "name": "2.jpg", "thumb": None},
+        {"lat": 51.12000, "lon": -115.40000, "severity": "low", "run_id": "b", "name": "3.jpg", "thumb": None},
+    ]
+    sites = cluster_sites(pts, radius_m=40)
+    assert len(sites) == 2  # first two are ~15m apart -> one site
+    near = next(s for s in sites if s["count"] == 2)
+    assert near["severity"] == "high"  # max severity wins
+    assert len(near["members"]) == 2
+
+
+def test_detection_source_compresses_oversized(tmp_path):
+    from src.wildfire.pipeline import _detection_source
+
+    rng = np.random.default_rng(1)
+    rgb = rng.integers(0, 255, (1200, 1600, 3), dtype=np.uint8)  # noise = big jpg
+    src = tmp_path / "big.jpg"
+    Image.fromarray(rgb).save(src, quality=98)
+    assert src.stat().st_size > 100_000
+
+    out = _detection_source(src, rgb, tmp_path / "_cache", max_mb=0.1)
+    assert out.endswith("_det.jpg")
+    from pathlib import Path as P
+    assert P(out).stat().st_size < src.stat().st_size
+    # small file passes through untouched
+    small = _detection_source(src, rgb, tmp_path / "_cache", max_mb=50)
+    assert small == str(src)
+
+
 def test_pipeline_writes_sorted_subfolders(tmp_path):
     from src.wildfire.pipeline import process_image
 

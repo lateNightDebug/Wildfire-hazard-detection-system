@@ -84,6 +84,7 @@ class Settings:
     output_dir: str = "outputs"
     models_dir: str = "models"
     source_dir: str = ""  # mission folder (SD-card dump) the console ingests
+    map_tiles_dir: str = "map_tiles"  # offline satellite tiles ({z}/{x}/{y}.jpg)
 
     # --- report ---
     language: str = "English"
@@ -91,6 +92,9 @@ class Settings:
     # --- detection / SAHI ---
     conf_threshold: float = 0.30
     slice_size: int = 1024
+    # Re-encode oversized images (resolution kept, quality ladder) before
+    # detection; smaller files decode faster across the batch. 0 disables.
+    preprocess_max_mb: float = 2.0
     overlap_ratio: float = 0.20
     batch_size: int = 4
     perform_standard_pred: bool = True

@@ -9,6 +9,7 @@ so every entry point returns ``None`` rather than raising.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -128,6 +129,73 @@ def extract_timestamp(path: str | Path) -> Optional[str]:
                 return str(gps[29])
     except Exception:
         return None
+    return None
+
+
+# --------------------------------------------------------------------- DJI MRK
+# DJI RTK drones write a Timestamp.MRK beside the photos: one line per exposure
+#   <seq> <gps_sec> [<week>] <N>,N <E>,E <V>,V <lat>,Lat <lon>,Lon <h>,Ellh <stds> <Q>,Q
+# The RTK position (cm-grade when Q=50 'fixed') beats EXIF GPS (m-grade), so we
+# prefer it whenever a sibling .MRK row matches the photo's sequence number.
+
+_MRK_CACHE: dict[tuple[str, float], dict[int, tuple[float, float, Optional[float]]]] = {}
+
+
+def parse_mrk(path: str | Path) -> dict[int, tuple[float, float, Optional[float]]]:
+    """Parse a DJI Timestamp.MRK -> {photo_seq: (lat, lon, ellipsoid_height)}."""
+    path = Path(path)
+    key = (str(path), path.stat().st_mtime)
+    if key in _MRK_CACHE:
+        return _MRK_CACHE[key]
+    rows: dict[int, tuple[float, float, Optional[float]]] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        try:
+            seq = int(parts[0])
+        except ValueError:
+            continue
+        lat = lon = alt = None
+        for p in parts:
+            try:
+                if p.endswith(",Lat"):
+                    lat = float(p[:-4])
+                elif p.endswith(",Lon"):
+                    lon = float(p[:-4])
+                elif p.endswith(",Ellh"):
+                    alt = float(p[:-5])
+            except ValueError:
+                continue
+        if lat is not None and lon is not None:
+            rows[seq] = (lat, lon, alt)
+    _MRK_CACHE[key] = rows
+    return rows
+
+
+def _dji_photo_seq(name: str) -> Optional[int]:
+    """Photo sequence from a DJI filename: DJI_20250502142325_0031_D.JPG -> 31."""
+    m = re.search(r"_(\d{3,4})(?:_[A-Z]+)?\.[A-Za-z]+$", name)
+    return int(m.group(1)) if m else None
+
+
+def mrk_location(path: str | Path) -> Optional[tuple[float, float, Optional[float]]]:
+    """RTK (lat, lon, alt) for an image from a sibling .MRK file, or None."""
+    path = Path(path)
+    seq = _dji_photo_seq(path.name)
+    if seq is None:
+        return None
+    try:
+        candidates = [p for p in path.parent.iterdir() if p.suffix.lower() == ".mrk"]
+    except OSError:
+        return None
+    for mrk in sorted(candidates):
+        try:
+            row = parse_mrk(mrk).get(seq)
+        except Exception:
+            continue
+        if row:
+            return row
     return None
 
 

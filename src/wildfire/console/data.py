@@ -274,6 +274,71 @@ def model_status(settings: Settings) -> list[dict]:
     return out
 
 
+# ------------------------------------------------------------------ map sites
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    import math
+
+    r = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def cluster_sites(points: list[dict], radius_m: float = 40.0) -> list[dict]:
+    """Tier-1 dedup: greedy-cluster image points within `radius_m` into sites.
+
+    Overlapping flight photos shoot the same trees from ~meters apart, so one
+    physical location shows up in 3-5 images. A site = one map marker with the
+    max severity and the member images; counting SITES, not images, is the
+    honest number for "distinct locations flagged".
+    """
+    rank = dict(SEVERITY_ORDER)
+    sites: list[dict] = []
+    for p in points:
+        target = None
+        for s in sites:
+            if _haversine_m(p["lat"], p["lon"], s["lat"], s["lon"]) <= radius_m:
+                target = s
+                break
+        if target is None:
+            sites.append({"lat": p["lat"], "lon": p["lon"], "severity": p["severity"],
+                          "count": 0, "members": []})
+            target = sites[-1]
+        n = target["count"]
+        target["lat"] = (target["lat"] * n + p["lat"]) / (n + 1)  # running centroid
+        target["lon"] = (target["lon"] * n + p["lon"]) / (n + 1)
+        target["count"] = n + 1
+        if rank.get(p["severity"], 0) > rank.get(target["severity"], 0):
+            target["severity"] = p["severity"]
+        target["members"].append({k: p[k] for k in ("run_id", "name", "severity", "thumb")
+                                  if k in p})
+    return sites
+
+
+def map_data(settings: Settings, radius_m: float = 40.0) -> dict:
+    """Per-image hazard points across all runs, clustered into dedup sites."""
+    root = settings.output_path
+    points: list[dict] = []
+    for run in discover_scans(settings):
+        batch = _load_json(root / run["id"] / "batch.json")
+        if not batch:
+            continue
+        for im in batch.get("images") or []:
+            dets = im.get("detections") or []
+            if not dets or not im.get("gps"):
+                continue
+            counts = _count_types(dets)
+            sev = display_severity(counts, 1, settings.severity_deadtrees_high,
+                                   settings.severity_deadtrees_medium)
+            points.append({"lat": float(im["gps"][0]), "lon": float(im["gps"][1]),
+                           "severity": sev or "low", "run_id": run["id"],
+                           "name": im.get("name"),
+                           "thumb": _rel_url(im.get("annotated_path"), root)})
+    sites = cluster_sites(points, radius_m)
+    return {"points": len(points), "sites": sites, "radius_m": radius_m}
+
+
 # ------------------------------------------------------------------ dashboard
 def dashboard_summary(settings: Settings) -> dict:
     """Everything the dashboard page needs in one payload."""

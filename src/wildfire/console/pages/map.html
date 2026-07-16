@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map — Wildfire Console</title>
 <link rel="stylesheet" href="/static/console.css">
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<style>
+  #leaflet-map { position:absolute; inset:0; background:#161a1b; }
+  .site-badge {
+    background:#fff; border-radius:10px; padding:1px 6px; font:600 10px 'IBM Plex Mono',monospace;
+  }
+  .leaflet-popup-content { font-family:'IBM Plex Sans',system-ui,sans-serif; margin:10px 12px; }
+  .leaflet-container { font: inherit; }
+</style>
 </head>
 <body>
 <nav id="topnav" class="topnav"></nav>
@@ -13,8 +22,8 @@
   <div class="card" style="overflow:hidden; display:flex; flex-direction:column;">
     <div class="card-head">
       <div style="display:flex; align-items:center; gap:9px;">
-        <span class="card-title">Hazard Map — all scans</span>
-        <span class="mono" style="font-size:11px; color:var(--muted-3);" id="pin-count"></span>
+        <span class="card-title">Hazard Map</span>
+        <span class="mono" style="font-size:11px; color:var(--muted-3);" id="site-count"></span>
       </div>
       <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);">
         <span><span class="legend-dot" style="background:#E05555;"></span> High</span>
@@ -26,89 +35,157 @@
   </div>
 
   <div class="card" style="display:flex; flex-direction:column; overflow:hidden;">
-    <div style="padding:14px 18px 10px;"><span class="card-title">Locations</span></div>
-    <div style="flex:1; overflow-y:auto;" id="pin-list"></div>
+    <div style="padding:14px 18px 10px;">
+      <span class="card-title">Hazard sites</span>
+      <div style="font-size:11px; color:var(--muted-3); margin-top:3px;" id="dedup-note"></div>
+    </div>
+    <div style="flex:1; overflow-y:auto;" id="site-list"></div>
   </div>
 </div>
 
 <script src="/static/console.js"></script>
+<script src="/static/vendor/leaflet/leaflet.js"></script>
 <script>
 renderNav("map");
-let PINS = [];
-let selectedPin = null;
+let INFO = null, SITES = [], leafletMap = null, markers = [], selectedSite = -1;
 
-function drawMap() {
+const rank = { high: 3, medium: 2, low: 1 };
+
+function popupHtml(s, i) {
+  const members = s.members.slice(0, 4).map(m =>
+    `<div class="mono" style="font-size:10px; color:#6b6b63;">${esc(m.name)} · <a href="/scans/${encodeURIComponent(m.run_id)}" style="color:#2D5A2D; font-weight:600;">open run</a></div>`).join("");
+  const thumb = (s.members.find(m => m.thumb) || {}).thumb;
+  return `
+    <div style="display:flex; gap:10px; max-width:250px;">
+      ${thumb ? `<img src="${esc(thumb)}" style="width:70px; height:70px; object-fit:cover; border-radius:6px; border:1px solid #ddd; flex-shrink:0;">` : ""}
+      <div style="min-width:0;">
+        <span class="badge ${s.severity}">${SEV[s.severity].label.toUpperCase()}</span>
+        <div style="font-size:12px; font-weight:600; margin-top:5px;">Site ${i + 1} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
+        <div class="mono" style="font-size:10px; color:#8a8a82;">${fmtCoord(s.lat, s.lon)}</div>
+      </div>
+    </div>
+    <div style="margin-top:8px; border-top:1px solid #eee; padding-top:6px;">${members}</div>`;
+}
+
+/* -------------------------------------------------- Leaflet (real tiles) */
+function initLeaflet() {
+  document.getElementById("map").innerHTML = '<div id="leaflet-map"></div>';
+  leafletMap = L.map("leaflet-map", { zoomControl: true, attributionControl: true });
+  L.tileLayer("/tiles/{z}/{x}/{y}", {
+    minZoom: INFO.min_zoom, maxZoom: INFO.max_zoom,
+    attribution: esc(INFO.attribution) + " · offline cache",
+  }).addTo(leafletMap);
+
+  if (INFO.overlays) {
+    fetch("/map-overlays.geojson").then(r => r.json()).then(gj => {
+      L.geoJSON(gj, {
+        style: f => {
+          const p = f.properties || {};
+          if (p.natural === "water") return { color: "#2c5566", weight: 1, fillColor: "#1f3d4a", fillOpacity: .55 };
+          if (p.waterway) return { color: "#356a7e", weight: 2, opacity: .8 };
+          if (["motorway", "trunk", "primary", "secondary"].includes(p.highway))
+            return { color: "#d9cda6", weight: 2.5, opacity: .8 };
+          return { color: "#cfc09a", weight: 1.2, opacity: .5, dashArray: "4 3" };
+        },
+      }).addTo(leafletMap);
+    }).catch(() => {});
+  }
+
+  markers = SITES.map((s, i) => {
+    const c = SEV[s.severity].color;
+    const m = L.circleMarker([s.lat, s.lon], {
+      radius: 8 + Math.min(s.count, 10), color: "#fff", weight: 2,
+      fillColor: c, fillOpacity: .9,
+    }).addTo(leafletMap).bindPopup(popupHtml(s, i));
+    m.on("click", () => { selectedSite = i; drawList(); });
+    return m;
+  });
+
+  if (SITES.length) {
+    leafletMap.fitBounds(L.latLngBounds(SITES.map(s => [s.lat, s.lon])).pad(0.25));
+  } else {
+    leafletMap.setView([51.1, -115.4], INFO.min_zoom || 10);
+  }
+}
+
+/* -------------------------------------------------- fallback (no tiles) */
+function initFallback() {
   const el = document.getElementById("map");
-  const pins = gpsToPercent(PINS);
-  document.getElementById("pin-count").textContent =
-    `· ${pins.length} marker${pins.length === 1 ? "" : "s"}`;
+  const pins = gpsToPercent(SITES.map((s, i) => ({ ...s, id: String(i) })));
   let html = terrainSvg("wfm") + '<div class="map-grid-overlay"></div>';
   for (const p of pins) {
     const c = SEV[p.severity].color;
     html += `
-      <div class="pin ${selectedPin === p.id ? "selected" : ""}" data-id="${esc(p.id)}" style="left:${p.x}%; top:${p.y}%;">
+      <div class="pin ${selectedSite === +p.id ? "selected" : ""}" data-id="${p.id}" style="left:${p.x}%; top:${p.y}%;">
         <span class="pin-ring" style="background:${c};"></span>
         <span class="pin-dot" style="background:${c}; box-shadow:0 0 0 2px ${c}55, 0 2px 8px rgba(0,0,0,.55);"></span>
+        ${p.count > 1 ? `<span class="site-badge" style="position:absolute; left:12px; top:-10px;">${p.count}</span>` : ""}
       </div>`;
   }
-  const sel = pins.find(p => p.id === selectedPin);
+  const sel = pins.find(p => +p.id === selectedSite);
   if (sel) {
     const below = sel.y < 38;
-    const leftPct = Math.min(Math.max(sel.x, 17), 83);
     html += `
-      <div class="map-popup" data-popup style="left:${leftPct}%; top:${sel.y}%;
+      <div class="map-popup" data-popup style="left:${Math.min(Math.max(sel.x, 17), 83)}%; top:${sel.y}%;
            transform:${below ? "translate(-50%, 22px)" : "translate(-50%, calc(-100% - 22px))"};">
-        <div style="display:flex; gap:11px;">
-          ${sel.thumb ? `<img src="${esc(sel.thumb)}" style="width:74px; height:74px; object-fit:cover; border-radius:7px; border:1px solid #ddd; flex-shrink:0;">` : ""}
-          <div style="flex:1; min-width:0;">
-            <span class="badge ${sel.severity}">${SEV[sel.severity].label.toUpperCase()} SEVERITY</span>
-            <div style="font-size:13px; font-weight:600; margin-top:7px; line-height:1.25; overflow:hidden; text-overflow:ellipsis;">${esc(sel.id)}</div>
-            <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">${fmtCoord(sel.lat, sel.lon)}</div>
-          </div>
-        </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:11px; padding-top:10px; border-top:1px solid #eee;">
-          <span class="mono" style="font-size:11px; color:var(--muted);">${esc(sel.date)} · ${esc(sel.time)}</span>
-          <a class="link-green" style="font-size:11px;" href="/scans/${encodeURIComponent(sel.id)}">Open →</a>
-        </div>
+        ${popupHtml(SITES[selectedSite], selectedSite)}
         <div class="tail" style="${below
           ? "top:-6px; border-left:1px solid #e2e0d6; border-top:1px solid #e2e0d6;"
           : "bottom:-6px; border-right:1px solid #e2e0d6; border-bottom:1px solid #e2e0d6;"}"></div>
       </div>`;
   }
   if (!pins.length) {
-    html += '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cdd6c0; opacity:.5; font-size:12px;" class="mono">No GPS-tagged scans yet</div>';
+    html += '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cdd6c0; opacity:.5; font-size:12px;" class="mono">No GPS-tagged detections yet</div>';
   }
-  html += '<div class="map-attr">Stylized terrain · pins from image GPS · not to scale · offline tile map = roadmap</div>';
+  html += '<div class="map-attr">Stylized terrain — run scripts/fetch_map_tiles.py for real offline satellite tiles</div>';
   el.innerHTML = html;
 }
 
-function drawList() {
-  document.getElementById("pin-list").innerHTML = PINS.map(p => `
-    <div data-list-id="${esc(p.id)}" style="padding:12px 18px; border-bottom:1px solid var(--line-soft); cursor:pointer; ${selectedPin === p.id ? "background:#faf9f4;" : ""}">
-      <div style="display:flex; align-items:center; justify-content:space-between;">
-        <span style="font-size:12px; font-weight:600;">${esc(p.date)} · ${esc(p.time)}</span>
-        ${sevBadge(p.severity)}
-      </div>
-      <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">
-        ${fmtCoord(p.lat, p.lon)} · ${p.total_detections} detection${p.total_detections === 1 ? "" : "s"}
-      </div>
-    </div>`).join("") ||
-    '<div class="empty">No GPS-tagged runs yet.</div>';
-  document.querySelectorAll("[data-list-id]").forEach(el =>
-    el.addEventListener("click", () => { selectedPin = el.dataset.listId; drawMap(); drawList(); }));
-}
-
 document.getElementById("map").addEventListener("click", e => {
+  if (leafletMap) return; // leaflet handles its own events
   const pinEl = e.target.closest(".pin");
-  if (pinEl) selectedPin = pinEl.dataset.id === selectedPin ? null : pinEl.dataset.id;
+  if (pinEl) selectedSite = +pinEl.dataset.id === selectedSite ? -1 : +pinEl.dataset.id;
   else if (e.target.closest("[data-popup]")) return;
-  else if (selectedPin === null) return;
-  else selectedPin = null;
-  drawMap(); drawList();
+  else if (selectedSite === -1) return;
+  else selectedSite = -1;
+  initFallback(); drawList();
 });
 
-api("/api/summary").then(d => { PINS = d.pins; drawMap(); drawList(); })
-  .catch(e => toast("Failed to load map: " + e.message));
+/* -------------------------------------------------- site list */
+function drawList() {
+  const order = SITES.map((s, i) => ({ s, i }))
+    .sort((a, b) => (rank[b.s.severity] - rank[a.s.severity]) || (b.s.count - a.s.count));
+  document.getElementById("site-list").innerHTML = order.map(({ s, i }) => `
+    <div data-site="${i}" style="padding:12px 18px; border-bottom:1px solid var(--line-soft); cursor:pointer; ${selectedSite === i ? "background:#faf9f4;" : ""}">
+      <div style="display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-size:12px; font-weight:600;">Site ${i + 1} · ${s.count} image${s.count === 1 ? "" : "s"}</span>
+        ${sevBadge(s.severity)}
+      </div>
+      <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">${fmtCoord(s.lat, s.lon)}</div>
+    </div>`).join("") ||
+    '<div class="empty">No GPS-tagged detections yet.</div>';
+  document.querySelectorAll("[data-site]").forEach(el =>
+    el.addEventListener("click", () => {
+      selectedSite = +el.dataset.site;
+      if (leafletMap) {
+        leafletMap.panTo([SITES[selectedSite].lat, SITES[selectedSite].lon]);
+        markers[selectedSite].openPopup();
+        drawList();
+      } else {
+        initFallback(); drawList();
+      }
+    }));
+}
+
+Promise.all([api("/api/map-info"), api("/api/map-data")]).then(([info, md]) => {
+  INFO = info; SITES = md.sites;
+  document.getElementById("site-count").textContent =
+    `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}`;
+  document.getElementById("dedup-note").textContent =
+    `${md.points} flagged image${md.points === 1 ? "" : "s"} merged into ${SITES.length} site${SITES.length === 1 ? "" : "s"} (≤${md.radius_m} m) — overlap dedup, tier 1`;
+  if (INFO.tiles) initLeaflet(); else initFallback();
+  drawList();
+}).catch(e => toast("Failed to load map: " + e.message));
 </script>
 </body>
 </html>
