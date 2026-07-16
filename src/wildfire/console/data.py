@@ -213,9 +213,12 @@ def scan_detail(run_id: str, settings: Settings) -> Optional[dict]:
             "error": im.get("error"),
         })
 
+    batch_images = batch.get("images") or []
     summary.update({
         "batch_info": batch.get("batch_info") or {},
         "stats": batch.get("stats") or {},
+        # The aircraft that shot the flight (EXIF), NOT the computer that processed it.
+        "drone": next((im.get("camera") for im in batch_images if im.get("camera")), None),
         "images_detail": images,
         "avg_confidence": round(sum(scores) / len(scores), 3) if scores else None,
         "peak_confidence": round(max(scores), 3) if scores else None,
@@ -288,7 +291,8 @@ def dashboard_summary(settings: Settings) -> dict:
         if s["gps"] and s["severity"]:
             pins.append({"id": s["id"], "lat": s["gps"][0], "lon": s["gps"][1],
                          "severity": s["severity"], "date": s["date"], "time": s["time"],
-                         "images": s["images"], "total_detections": s["total_detections"]})
+                         "images": s["images"], "total_detections": s["total_detections"],
+                         "thumb": (s["preview_urls"] or [None])[0]})
 
     last = scans[0] if scans else None
     return {

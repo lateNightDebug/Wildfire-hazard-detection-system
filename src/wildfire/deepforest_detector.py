@@ -46,7 +46,7 @@ def _configure_quiet() -> None:
     try:
         import torch
 
-        torch.set_float32_matmul_precision("high")  # uses RTX 4090 Tensor Cores
+        torch.set_float32_matmul_precision("high")  # Tensor Cores on any modern NVIDIA GPU
     except Exception:
         pass
     for name in ("pytorch_lightning", "lightning.pytorch", "lightning"):

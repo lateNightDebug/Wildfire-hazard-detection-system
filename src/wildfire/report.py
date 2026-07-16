@@ -239,7 +239,62 @@ def _image_page(im: ImageResult, assets: Path) -> list:
     return story
 
 
-def _summary_page(batch: BatchResult, ai_text: Optional[str]) -> list:
+def _pin_map_png(batch: BatchResult, assets: Path) -> Optional[Path]:
+    """Offline GPS pin plot for the summary page (relative positions, not to scale).
+
+    One pin per GPS-tagged image, colored by what it contains: flame red,
+    smoke orange, dead tree yellow, clean green.
+    """
+    from PIL import Image as PILImage
+    from PIL import ImageDraw
+
+    pts = []
+    for im in batch.images:
+        if not im.gps:
+            continue
+        names = {d.display for d in im.detections}
+        color = ((224, 85, 85) if "Flame" in names else
+                 (240, 165, 0) if "Smoke" in names else
+                 (255, 215, 0) if im.detections else (58, 154, 58))
+        pts.append((float(im.gps[0]), float(im.gps[1]), color))
+    if not pts:
+        return None
+
+    W, H = 900, 540
+    img = PILImage.new("RGB", (W, H), (22, 26, 27))
+    d = ImageDraw.Draw(img)
+    for x in range(0, W, 64):
+        d.line([(x, 0), (x, H)], fill=(32, 38, 36))
+    for y in range(0, H, 64):
+        d.line([(0, y), (W, y)], fill=(32, 38, 36))
+
+    lats = [p[0] for p in pts]
+    lons = [p[1] for p in pts]
+    lat_span = max(max(lats) - min(lats), 1e-4)
+    lon_span = max(max(lons) - min(lons), 1e-4)
+    pad = 0.12
+    for lat, lon, color in pts:
+        px = (pad + (lon - min(lons)) / lon_span * (1 - 2 * pad)) * W
+        py = (pad + (max(lats) - lat) / lat_span * (1 - 2 * pad)) * H  # north = up
+        d.ellipse([px - 7, py - 7, px + 7, py + 7], fill=color,
+                  outline=(255, 255, 255), width=2)
+
+    legend = [("Flame", (224, 85, 85)), ("Smoke", (240, 165, 0)),
+              ("Dead tree", (255, 215, 0)), ("No detections", (58, 154, 58))]
+    x = 16
+    for label, color in legend:
+        d.ellipse([x, H - 26, x + 12, H - 14], fill=color, outline=(255, 255, 255))
+        d.text((x + 18, H - 26), label, fill=(205, 214, 192))
+        x += 18 + 8 * len(label) + 24
+    d.text((16, 12), "Relative GPS positions - north up - not to scale", fill=(154, 154, 146))
+
+    assets.mkdir(parents=True, exist_ok=True)
+    dest = assets / "summary_map.png"
+    img.save(dest)
+    return dest
+
+
+def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path) -> list:
     s = batch.stats
     rows = [["Metric", "Value"]] + [
         ["Images processed", s.get("images_processed", 0)],
@@ -261,8 +316,13 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str]) -> list:
         ("FONTSIZE", (0, 0), (-1, -1), 10),
         ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
-    story = [Paragraph("Batch Summary", _H1), Spacer(1, 0.2 * inch), st, Spacer(1, 0.3 * inch),
-             Paragraph("AI Analysis & Recommendations", _H2)]
+    story = [Paragraph("Batch Summary", _H1), Spacer(1, 0.2 * inch), st, Spacer(1, 0.3 * inch)]
+    map_png = _pin_map_png(batch, assets)
+    if map_png:
+        story += [Paragraph("Hazard Locations", _H2),
+                  _fit_image(str(map_png), 6.6 * inch, 3.9 * inch),
+                  Spacer(1, 0.25 * inch)]
+    story.append(Paragraph("AI Analysis & Recommendations", _H2))
     body = ai_text or ("[Automated AI analysis unavailable — LM Studio was not reachable. "
                        "Start the local LM Studio server and load the model to include analysis.]")
     for para in body.split("\n\n"):
@@ -293,7 +353,7 @@ def build_report(
     story += _cover(batch)
     for im in batch.images:
         story += _image_page(im, assets)
-    story += _summary_page(batch, ai_text)
+    story += _summary_page(batch, ai_text, assets)
 
     doc.build(story, onFirstPage=_banner, onLaterPages=_banner, canvasmaker=_NumberedCanvas)
     return out_path

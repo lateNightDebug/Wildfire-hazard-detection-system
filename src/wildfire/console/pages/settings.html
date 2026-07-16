@@ -40,6 +40,10 @@
           Custom Vision ONNX export there and it becomes available.
         </div>
         <div id="model-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:12px;">
+          <button id="dl-models" class="btn-quiet" style="padding:7px 12px;">Download missing models</button>
+          <span id="dl-status" style="font-size:11px; color:var(--muted-3);">Fetches configured YOLO weights (needs internet once; cached after).</span>
+        </div>
       </div>
 
       <!-- DETECTION -->
@@ -141,8 +145,11 @@
           <input class="input" id="source_dir" type="text" spellcheck="false" placeholder="set from the Scans page, or paste here">
         </div>
         <div class="form-row">
-          <label>Outputs</label>
-          <div class="mono" style="font-size:11px; color:var(--muted-2); word-break:break-all;" id="output-dir"></div>
+          <label>Report / output folder</label>
+          <div>
+            <input class="input" id="output_dir" type="text" spellcheck="false">
+            <div class="hint">Where runs and PDFs are written. Takes effect after restarting the app.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -155,7 +162,7 @@ renderNav("settings");
 const FIELDS = ["conf_threshold", "slice_size", "overlap_ratio", "severity_deadtrees_high",
                 "severity_deadtrees_medium", "lmstudio_url", "lmstudio_model", "language",
                 "onnx_input_size", "onnx_normalize", "onnx_channel_order", "onnx_nms_iou",
-                "source_dir"];
+                "source_dir", "output_dir"];
 let MODELS = [];
 
 function drawModels(models) {
@@ -179,7 +186,6 @@ async function load() {
     if (el) el.value = d.values[f] ?? "";
   }
   document.getElementById("perform_standard_pred").checked = !!d.values.perform_standard_pred;
-  document.getElementById("output-dir").textContent = d.output_dir;
   drawModels(d.models);
 }
 
@@ -205,6 +211,21 @@ document.getElementById("save").addEventListener("click", async () => {
     toast("Save failed: " + e.message, 8000);
   } finally {
     btn.disabled = false; btn.textContent = "Save settings";
+  }
+});
+
+document.getElementById("dl-models").addEventListener("click", async () => {
+  const btn = document.getElementById("dl-models");
+  const st = document.getElementById("dl-status");
+  btn.disabled = true; st.textContent = "Downloading… (first fetch can take a few minutes)";
+  try {
+    const r = await api("/api/models/download", { method: "POST" });
+    drawModels(r.models);
+    st.textContent = r.log[r.log.length - 1] || "done";
+  } catch (e) {
+    st.textContent = "Download failed: " + e.message;
+  } finally {
+    btn.disabled = false;
   }
 });
 

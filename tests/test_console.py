@@ -240,6 +240,42 @@ def test_reports_and_settings_api(tmp_path):
     assert client.get("/settings").status_code == 200
 
 
+def test_extract_camera_from_exif(tmp_path):
+    from PIL import Image as PILImage
+
+    from src.wildfire.gps import extract_camera
+
+    p = tmp_path / "dji.jpg"
+    img = PILImage.fromarray(np.zeros((8, 8, 3), np.uint8))
+    exif = PILImage.Exif()
+    exif[271], exif[272] = "DJI", "FC3582"  # Make, Model
+    img.save(p, exif=exif)
+    assert extract_camera(p) == "DJI FC3582"
+
+    q = tmp_path / "plain.jpg"
+    PILImage.fromarray(np.zeros((8, 8, 3), np.uint8)).save(q)
+    assert extract_camera(q) is None
+
+
+def test_report_embeds_summary_map(tmp_path):
+    from src.wildfire.report import build_report
+    from src.wildfire.types import BatchResult, Detection, ImageResult
+
+    img = tmp_path / "shot.jpg"
+    Image.fromarray(np.zeros((40, 60, 3), np.uint8)).save(img)
+    batch = BatchResult(
+        images=[ImageResult(path=str(img), name="shot.jpg", width=60, height=40,
+                            detections=[Detection("fire", "Flame", 0.9, (1, 1, 9, 9))],
+                            gps=(51.1, -115.4), flagged=True,
+                            orig_display_path=str(img), annotated_path=str(img),
+                            density_path=str(img))],
+        stats={"images_processed": 1, "total_detections": 1},
+        batch_info={"batch_label": "t"})
+    pdf = build_report(batch, tmp_path / "report_x.pdf")
+    assert pdf.exists() and pdf.stat().st_size > 1000
+    assert (tmp_path / "_report_assets" / "summary_map.png").exists()
+
+
 def test_report_paths_never_collide(tmp_path):
     from src.wildfire.report import latest_report, timestamped_report_path
 

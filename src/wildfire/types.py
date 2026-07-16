@@ -56,6 +56,7 @@ class ImageResult:
     gps: Optional[tuple[float, float]] = None  # (lat, lon) decimal degrees
     altitude: Optional[float] = None  # meters
     timestamp: Optional[str] = None  # capture time if available
+    camera: Optional[str] = None  # drone/camera model from EXIF (e.g. "DJI FC3582")
     flagged: bool = False  # has at least one detection (a hazard location)
     orig_display_path: Optional[str] = None
     annotated_path: Optional[str] = None
@@ -72,6 +73,7 @@ class ImageResult:
             "gps": list(self.gps) if self.gps else None,
             "altitude": self.altitude,
             "timestamp": self.timestamp,
+            "camera": self.camera,
             "flagged": self.flagged,
             "orig_display_path": self.orig_display_path,
             "annotated_path": self.annotated_path,
@@ -87,6 +89,7 @@ class ImageResult:
             detections=[Detection.from_dict(x) for x in d.get("detections", [])],
             gps=tuple(gps) if gps else None,
             altitude=d.get("altitude"), timestamp=d.get("timestamp"),
+            camera=d.get("camera"),
             flagged=d.get("flagged", False),
             orig_display_path=d.get("orig_display_path"),
             annotated_path=d.get("annotated_path"),

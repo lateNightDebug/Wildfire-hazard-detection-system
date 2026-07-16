@@ -131,6 +131,25 @@ def extract_timestamp(path: str | Path) -> Optional[str]:
     return None
 
 
+def extract_camera(path: str | Path) -> Optional[str]:
+    """Drone/camera model from EXIF Make + Model, e.g. 'DJI FC3582'.
+
+    This is the aircraft's camera unit, not the computer running detection —
+    the UI shows it as the capture device for the flight.
+    """
+    try:
+        with Image.open(path) as img:
+            exif = img.getexif()
+            make = str(exif.get(271, "") or "").strip()   # Make
+            model = str(exif.get(272, "") or "").strip()  # Model
+    except Exception:
+        return None
+    if model.lower().startswith(make.lower()) and make:
+        return model or None  # some vendors repeat the make inside the model
+    combo = " ".join(p for p in (make, model) if p)
+    return combo or None
+
+
 def geotiff_center_lonlat(path: str | Path) -> Optional[tuple[float, float]]:
     """Center (lon, lat) in WGS84 from GeoTIFF georeferencing, or None.
 

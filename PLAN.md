@@ -4,14 +4,14 @@
 
 ## 本周必做
 
-- [ ] **Commit 全部现有工作**(40+ 文件,无署名)
-- [ ] **Scan Detail 显示无人机型号**(EXIF Make/Model),开发机 GPU 降级为 "Processed on" 一行
-- [ ] **地图弹窗加照片缩略图**(Dashboard + Map 页)
-- [ ] **PDF 汇总页加 GPS pin 地图**
-- [ ] **Settings 补全**:报告输出路径设置(重启生效)+ 模型下载按钮
-- [ ] **Alerts 加回 Coming Soon 占位**(按原计划)
-- [ ] **通用设备支持核查**:去掉代码/文档里写死 RTX 4090 的假设(任意 CUDA GPU / Apple MPS / CPU)
-- [ ] 全量测试保持绿色,收尾 commit
+- [x] **Commit 全部现有工作**(40+ 文件,无署名)
+- [x] **Scan Detail 显示无人机型号**(EXIF Make/Model,实测 DJI L2),开发机 GPU 降级为 "Processed on" 一行(旧 run 无此字段,显示 "not in EXIF";新 run 自动带)
+- [x] **地图弹窗加照片缩略图**(Dashboard + Map 页)
+- [x] **PDF 汇总页加 GPS pin 地图**(按检测类型着色,含图例)
+- [x] **Settings 补全**:报告输出路径设置(重启生效)+ 模型下载按钮
+- [x] **Alerts 加回 Coming Soon 占位**(按原计划)
+- [x] **通用设备支持核查**:代码本就通用(任意 CUDA → Apple MPS → CPU),仅注释写死 4090,已改
+- [x] 全量测试保持绿色(61 个),收尾 commit
 
 ## 等待外部条件
 

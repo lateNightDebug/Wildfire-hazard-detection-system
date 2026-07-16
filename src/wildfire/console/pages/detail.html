@@ -374,10 +374,11 @@ function drawSession() {
   const bi = DETAIL.batch_info || {};
   const kv = (k, v) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
   document.getElementById("session-rows").innerHTML = [
+    kv("Drone / camera", DETAIL.drone || "not in EXIF"),
     kv("GPS", DETAIL.gps ? fmtCoord(DETAIL.gps[0], DETAIL.gps[1]) : "not embedded"),
     kv("Images", DETAIL.images),
     kv("Detectors", bi.model_count ?? "—"),
-    kv("Device", bi.device || "—"),
+    kv("Processed on", bi.device || "—"),
     kv("Conf / slice", bi.conf_threshold != null ? `${bi.conf_threshold} / ${bi.slice_size}px` : "—"),
     kv("Generated", bi.generated_at || DETAIL.created),
   ].join("");
@@ -390,7 +391,7 @@ function draw() {
   document.getElementById("d-sub").textContent =
     `${DETAIL.images} image${DETAIL.images === 1 ? "" : "s"} · ${countsLine(DETAIL.detections_by_type)}`;
   const chips = [`<span class="chip mono">${esc(DETAIL.id)}</span>`];
-  if ((DETAIL.batch_info || {}).device) chips.push(`<span class="chip">Device: ${esc(DETAIL.batch_info.device)}</span>`);
+  if (DETAIL.drone) chips.push(`<span class="chip">Drone: ${esc(DETAIL.drone)}</span>`);
   if (DETAIL.reviewed) chips.push('<span class="chip" style="color:var(--green); border-color:var(--green-line);">Human-reviewed</span>');
   const sev = DETAIL.severity || "none";
   chips.push(`<span class="badge ${sev}" style="font-size:11px; padding:3px 9px;">${sev === "none" ? "NO DETECTIONS" : SEV[sev].label.toUpperCase() + " SEVERITY"}</span>`);

@@ -58,9 +58,14 @@ function drawMap() {
     html += `
       <div class="map-popup" data-popup style="left:${leftPct}%; top:${sel.y}%;
            transform:${below ? "translate(-50%, 22px)" : "translate(-50%, calc(-100% - 22px))"};">
-        <span class="badge ${sel.severity}">${SEV[sel.severity].label.toUpperCase()} SEVERITY</span>
-        <div style="font-size:13px; font-weight:600; margin-top:7px; line-height:1.25;">${esc(sel.id)}</div>
-        <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">${fmtCoord(sel.lat, sel.lon)}</div>
+        <div style="display:flex; gap:11px;">
+          ${sel.thumb ? `<img src="${esc(sel.thumb)}" style="width:74px; height:74px; object-fit:cover; border-radius:7px; border:1px solid #ddd; flex-shrink:0;">` : ""}
+          <div style="flex:1; min-width:0;">
+            <span class="badge ${sel.severity}">${SEV[sel.severity].label.toUpperCase()} SEVERITY</span>
+            <div style="font-size:13px; font-weight:600; margin-top:7px; line-height:1.25; overflow:hidden; text-overflow:ellipsis;">${esc(sel.id)}</div>
+            <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;">${fmtCoord(sel.lat, sel.lon)}</div>
+          </div>
+        </div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-top:11px; padding-top:10px; border-top:1px solid #eee;">
           <span class="mono" style="font-size:11px; color:var(--muted);">${esc(sel.date)} · ${esc(sel.time)}</span>
           <a class="link-green" style="font-size:11px;" href="/scans/${encodeURIComponent(sel.id)}">Open →</a>

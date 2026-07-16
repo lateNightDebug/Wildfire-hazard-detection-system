@@ -1,4 +1,4 @@
-"""Compute-device selection: CUDA (Windows RTX 4090) -> MPS (Apple Silicon) -> CPU."""
+"""Compute-device selection: CUDA (any NVIDIA GPU) -> MPS (Apple Silicon) -> CPU."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def pick_device() -> str:
 
 
 def device_label() -> str:
-    """Human-readable device description for logs/UI (e.g. 'cuda:0 (NVIDIA GeForce RTX 4090)')."""
+    """Human-readable device description for logs/UI (e.g. 'cuda:0 (<GPU name>)')."""
     dev = pick_device()
     try:
         import torch

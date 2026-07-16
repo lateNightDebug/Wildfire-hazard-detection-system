@@ -62,6 +62,7 @@ _EDITABLE_SETTINGS: dict = {
     "lmstudio_model": str,
     "language": str,
     "source_dir": str,
+    "output_dir": str,  # /outputs mount is bound at startup -> needs app restart
     "conf_threshold": lambda v: max(0.01, min(0.99, float(v))),
     "slice_size": lambda v: max(256, min(4096, int(v))),
     "overlap_ratio": lambda v: max(0.0, min(0.9, float(v))),
@@ -296,6 +297,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         up, ids, err = health_check(app.state.settings.lmstudio_url)
         return {"up": up, "models": ids or [], "error": err}
+
+    @app.post("/api/models/download")
+    def api_models_download():
+        from ..models import ensure_yolo_sources
+
+        logs: list[str] = []
+        paths = ensure_yolo_sources(app.state.settings, log=logs.append)
+        logs.append(f"YOLO models present: {[p.name for p in paths] or 'none'}")
+        return {"log": logs, "models": data.model_status(app.state.settings)}
 
     # ------------------------------------------------------- mission folder
     @app.get("/api/source")

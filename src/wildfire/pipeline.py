@@ -18,7 +18,7 @@ import numpy as np
 from .annotate import draw_boxes, grid_density_map
 from .config import Settings
 from .device import device_label
-from .gps import extract_altitude, extract_timestamp, get_location
+from .gps import extract_altitude, extract_camera, extract_timestamp, get_location
 from .imageio_utils import PASSTHROUGH_EXTS, load_rgb_uint8
 from .risk import batch_stats
 from .types import BatchResult, Detection, ImageResult
@@ -86,6 +86,7 @@ def process_image(
             path=str(path), name=name, width=W, height=H,
             detections=detections,
             gps=get_location(path), altitude=extract_altitude(path), timestamp=extract_timestamp(path),
+            camera=extract_camera(path),
             flagged=bool(detections),
             orig_display_path=orig_path, annotated_path=annotated_path, density_path=density_path,
         )
