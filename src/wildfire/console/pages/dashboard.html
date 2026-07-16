@@ -55,9 +55,9 @@
         <span class="mono" style="font-size:11px; color:var(--muted-3);" id="pin-count">· 0 markers</span>
       </div>
       <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);">
-        <span><span class="legend-dot" style="background:#E05555;"></span> High</span>
-        <span><span class="legend-dot" style="background:#F0A500;"></span> Medium</span>
-        <span><span class="legend-dot" style="background:#3A9A3A;"></span> Low</span>
+        <span><span class="legend-dot" style="background:#E05555;"></span> Flame</span>
+        <span><span class="legend-dot" style="background:#F0A500;"></span> Smoke</span>
+        <span><span class="legend-dot" style="background:#FFD700;"></span> Dead Tree</span>
         <a class="link-green" href="/map" style="font-size:11px;">Open map →</a>
       </div>
     </div>
@@ -115,7 +115,7 @@ function drawMap() {
   const pins = gpsToPercent(SITES.map((s, i) => ({ ...s, id: String(i) })));
   let html = terrainSvg("wf") + '<div class="map-grid-overlay"></div>';
   for (const p of pins) {
-    const c = SEV[p.severity].color;
+    const c = kindOf(p).color;
     html += `
       <div class="pin ${selectedPin === p.id ? "selected" : ""}" data-id="${esc(p.id)}"
            style="left:${p.x}%; top:${p.y}%;">

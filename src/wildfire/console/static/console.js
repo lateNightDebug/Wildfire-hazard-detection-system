@@ -6,6 +6,20 @@ const SEV = {
   low:    { label: "Low",    color: "#3A9A3A" },
 };
 
+/* Hazard TYPE colors — same language as the annotation boxes: most detections
+   are dead trees (yellow); flame red and smoke orange stand out against them. */
+const KIND = {
+  flame:    { label: "Flame",     color: "#E05555" },
+  smoke:    { label: "Smoke",     color: "#F0A500" },
+  deadtree: { label: "Dead Tree", color: "#FFD700" },
+};
+const kindOf = s => KIND[s.kind] || KIND.deadtree;
+
+function kindBadge(kind) {
+  const k = KIND[kind] || KIND.deadtree;
+  return `<span class="badge" style="color:${k.color}; background:${k.color}18; border:1px solid ${k.color}55;">${k.label.toUpperCase()}</span>`;
+}
+
 const REVIEW_URL_FALLBACK = "http://127.0.0.1:7860";
 
 async function api(path, opts) {
@@ -146,7 +160,7 @@ function sitePopupHtml(s, i) {
     <div style="display:flex; gap:10px; max-width:250px;">
       ${thumb ? `<img src="${esc(thumb)}" style="width:70px; height:70px; object-fit:cover; border-radius:6px; border:1px solid #ddd; flex-shrink:0;">` : ""}
       <div style="min-width:0;">
-        <span class="badge ${s.severity}">${SEV[s.severity].label.toUpperCase()}</span>
+        ${kindBadge(s.kind)} <span class="badge ${s.severity}" style="margin-left:2px;">${SEV[s.severity].label.toUpperCase()}</span>
         <div style="font-size:12px; font-weight:600; margin-top:5px;">Site ${i + 1} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
         <div class="mono" style="font-size:10px; color:#8a8a82;">${fmtCoord(s.lat, s.lon)}</div>
       </div>
@@ -179,7 +193,7 @@ function initLeafletSites(el, sites, info, opts = {}) {
     }).catch(() => {});
   }
   const markers = sites.map((s, i) => {
-    const c = SEV[s.severity].color;
+    const c = kindOf(s).color;
     const m = L.circleMarker([s.lat, s.lon], {
       radius: 8 + Math.min(s.count, 10), color: "#fff", weight: 2,
       fillColor: c, fillOpacity: .9,

@@ -6,6 +6,8 @@
 <title>Scan Detail — Wildfire Console</title>
 <link rel="stylesheet" href="/static/console.css">
 <style>
+  .preview-box { overflow:hidden; }
+  #stage { transform-origin: 0 0; }
   #overlay { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
   #overlay rect.box { fill:transparent; stroke-width:2.5; cursor:pointer; }
   #overlay rect.box.sel { stroke-dasharray:6 4; stroke-width:3.5; }
@@ -49,6 +51,7 @@
               <button data-v="original">Original</button>
               <button data-v="gridmap">Grid</button>
             </div>
+            <span class="mono" style="font-size:10px; color:var(--muted-3);" id="zoom-hint">wheel: zoom · drag: pan · dbl-click: reset</span>
             <span class="mono" style="font-size:11px; color:var(--muted-3);" id="preview-name"></span>
           </div>
         </div>
@@ -124,6 +127,55 @@ const SEV_NOTE = {
   none: "No hazards detected in this scan.",
 };
 
+/* ---------------------------------------------------------- zoom & pan
+   CSS transform on #stage (image + box overlay together, origin 0 0) — the
+   editor's coordinate math uses getBoundingClientRect, which already includes
+   the transform, so drawing boxes keeps working while zoomed in. */
+let zoom = 1, panX = 0, panY = 0;
+let panning = null;
+
+function applyZoom() {
+  const st = document.getElementById("stage");
+  if (st) st.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  document.getElementById("zoom-hint").textContent =
+    zoom > 1 ? `${zoom.toFixed(1)}× · drag: pan · dbl-click: reset`
+             : "wheel: zoom · drag: pan · dbl-click: reset";
+}
+
+function resetZoom() { zoom = 1; panX = panY = 0; applyZoom(); }
+
+const previewEl = document.getElementById("preview");
+previewEl.addEventListener("wheel", e => {
+  const st = document.getElementById("stage");
+  if (!st) return;
+  e.preventDefault();
+  const rect = st.getBoundingClientRect();
+  const nz = Math.min(12, Math.max(1, zoom * (e.deltaY < 0 ? 1.25 : 0.8)));
+  if (nz === zoom) return;
+  const u = (e.clientX - rect.left) / zoom;  // cursor point in content coords
+  const v = (e.clientY - rect.top) / zoom;
+  panX -= u * (nz - zoom);
+  panY -= v * (nz - zoom);
+  zoom = nz;
+  if (zoom === 1) { panX = panY = 0; }
+  applyZoom();
+}, { passive: false });
+
+previewEl.addEventListener("pointerdown", e => {
+  if (EDIT || zoom === 1) return;  // in edit mode dragging draws boxes
+  panning = { x: e.clientX, y: e.clientY };
+  previewEl.setPointerCapture(e.pointerId);
+});
+previewEl.addEventListener("pointermove", e => {
+  if (!panning) return;
+  panX += e.clientX - panning.x;
+  panY += e.clientY - panning.y;
+  panning = { x: e.clientX, y: e.clientY };
+  applyZoom();
+});
+previewEl.addEventListener("pointerup", () => { panning = null; });
+previewEl.addEventListener("dblclick", resetZoom);
+
 function imgSeverity(im) {
   if ((im.counts || {})["Flame"]) return "high";
   if ((im.counts || {})["Smoke"]) return "medium";
@@ -195,7 +247,11 @@ function drawPreview() {
                : `<div class="${cls}" data-i="${i}" title="${esc(t.name)}"></div>`;
   }).join("");
   document.querySelectorAll("#thumbs [data-i]").forEach(el =>
-    el.addEventListener("click", () => { curImage = +el.dataset.i; selBox = -1; drawing = null; drawPreview(); drawDetTable(); }));
+    el.addEventListener("click", () => {
+      curImage = +el.dataset.i; selBox = -1; drawing = null;
+      resetZoom(); drawPreview(); drawDetTable();
+    }));
+  applyZoom();  // innerHTML replaced the stage — restore the current transform
   if (EDIT) wireOverlay();
 }
 

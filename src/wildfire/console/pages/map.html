@@ -23,9 +23,9 @@
         <span class="mono" style="font-size:11px; color:var(--muted-3);" id="site-count"></span>
       </div>
       <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);">
-        <span><span class="legend-dot" style="background:#E05555;"></span> High</span>
-        <span><span class="legend-dot" style="background:#F0A500;"></span> Medium</span>
-        <span><span class="legend-dot" style="background:#3A9A3A;"></span> Low</span>
+        <span><span class="legend-dot" style="background:#E05555;"></span> Flame</span>
+        <span><span class="legend-dot" style="background:#F0A500;"></span> Smoke</span>
+        <span><span class="legend-dot" style="background:#FFD700;"></span> Dead Tree</span>
       </div>
     </div>
     <div id="tiles-banner" style="display:none; padding:10px 16px; background:#f4ecd6; border-bottom:1px solid #e6dab8; font-size:12px; color:#6b5a2a;">
@@ -58,7 +58,7 @@ function initFallback() {
   const pins = gpsToPercent(SITES.map((s, i) => ({ ...s, id: String(i) })));
   let html = terrainSvg("wfm") + '<div class="map-grid-overlay"></div>';
   for (const p of pins) {
-    const c = SEV[p.severity].color;
+    const c = kindOf(p).color;
     html += `
       <div class="pin ${selectedSite === +p.id ? "selected" : ""}" data-id="${p.id}" style="left:${p.x}%; top:${p.y}%;">
         <span class="pin-ring" style="background:${c};"></span>

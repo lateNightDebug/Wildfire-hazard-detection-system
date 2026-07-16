@@ -285,6 +285,9 @@ def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+KIND_ORDER = {"flame": 3, "smoke": 2, "deadtree": 1}
+
+
 def cluster_sites(points: list[dict], radius_m: float = 40.0) -> list[dict]:
     """Tier-1 dedup: greedy-cluster image points within `radius_m` into sites.
 
@@ -303,7 +306,7 @@ def cluster_sites(points: list[dict], radius_m: float = 40.0) -> list[dict]:
                 break
         if target is None:
             sites.append({"lat": p["lat"], "lon": p["lon"], "severity": p["severity"],
-                          "count": 0, "members": []})
+                          "kind": p.get("kind", "deadtree"), "count": 0, "members": []})
             target = sites[-1]
         n = target["count"]
         target["lat"] = (target["lat"] * n + p["lat"]) / (n + 1)  # running centroid
@@ -311,6 +314,8 @@ def cluster_sites(points: list[dict], radius_m: float = 40.0) -> list[dict]:
         target["count"] = n + 1
         if rank.get(p["severity"], 0) > rank.get(target["severity"], 0):
             target["severity"] = p["severity"]
+        if KIND_ORDER.get(p.get("kind"), 0) > KIND_ORDER.get(target["kind"], 0):
+            target["kind"] = p["kind"]  # most critical hazard type wins the marker color
         target["members"].append({k: p[k] for k in ("run_id", "name", "severity", "thumb")
                                   if k in p})
     return sites
@@ -331,8 +336,10 @@ def map_data(settings: Settings, radius_m: float = 40.0) -> dict:
             counts = _count_types(dets)
             sev = display_severity(counts, 1, settings.severity_deadtrees_high,
                                    settings.severity_deadtrees_medium)
+            kind = ("flame" if counts.get("Flame") else
+                    "smoke" if counts.get("Smoke") else "deadtree")
             points.append({"lat": float(im["gps"][0]), "lon": float(im["gps"][1]),
-                           "severity": sev or "low", "run_id": run["id"],
+                           "severity": sev or "low", "kind": kind, "run_id": run["id"],
                            "name": im.get("name"),
                            "thumb": _rel_url(im.get("annotated_path"), root)})
     sites = cluster_sites(points, radius_m)
