@@ -338,8 +338,22 @@ def cluster_sites(points: list[dict], radius_m: float = 40.0) -> list[dict]:
     return sites
 
 
-def map_data(settings: Settings, radius_m: float = 40.0) -> dict:
-    """Per-image hazard points across all runs, clustered into dedup sites."""
+def _point_month(im: dict, run: dict) -> str:
+    """Capture month 'YYYY-MM' — EXIF timestamp first (when it was FLOWN, not
+    when it was analyzed), falling back to the run date."""
+    ts = str(im.get("timestamp") or "")  # EXIF 'YYYY:MM:DD HH:MM:SS'
+    if len(ts) >= 7 and ts[:4].isdigit():
+        return ts[:7].replace(":", "-")
+    return str(run.get("created", ""))[:7]
+
+
+def map_data(settings: Settings, radius_m: float = 40.0, month: str = "all") -> dict:
+    """Per-image hazard points across all runs, clustered into dedup sites.
+
+    `month` filters by capture time: 'all', 'latest', 'YYYY' or 'YYYY-MM' —
+    hazards age (last month's dead trees may be cleared), so the map defaults
+    to one period instead of mixing everything.
+    """
     root = settings.output_path
     points: list[dict] = []
     for run in discover_scans(settings):
@@ -357,10 +371,24 @@ def map_data(settings: Settings, radius_m: float = 40.0) -> dict:
                     "smoke" if counts.get("Smoke") else "deadtree")
             points.append({"lat": float(im["gps"][0]), "lon": float(im["gps"][1]),
                            "severity": sev or "low", "kind": kind, "run_id": run["id"],
-                           "name": im.get("name"),
+                           "name": im.get("name"), "month": _point_month(im, run),
                            "thumb": _rel_url(im.get("annotated_path"), root)})
+
+    month_counts: dict[str, int] = {}
+    for p in points:
+        if p["month"]:
+            month_counts[p["month"]] = month_counts.get(p["month"], 0) + 1
+    months = [{"key": k, "points": v} for k, v in sorted(month_counts.items(), reverse=True)]
+
+    selected = month or "all"
+    if selected == "latest":
+        selected = months[0]["key"] if months else "all"
+    if selected != "all":
+        points = [p for p in points if p["month"].startswith(selected)]
+
     sites = cluster_sites(points, radius_m)
-    return {"points": len(points), "sites": sites, "radius_m": radius_m}
+    return {"points": len(points), "sites": sites, "radius_m": radius_m,
+            "months": months, "month": selected}
 
 
 # ------------------------------------------------------------------ dashboard

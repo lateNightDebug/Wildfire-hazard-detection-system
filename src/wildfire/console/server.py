@@ -257,8 +257,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return app.state.settings._resolve(app.state.settings.map_tiles_dir)
 
     @app.get("/api/map-data")
-    def api_map_data(radius: float = 40.0):
-        return data.map_data(app.state.settings, radius_m=max(5.0, min(500.0, radius)))
+    def api_map_data(radius: float = 40.0, month: str = "all"):
+        return data.map_data(app.state.settings, radius_m=max(5.0, min(500.0, radius)),
+                             month=month)
 
     @app.get("/api/map-info")
     def api_map_info():

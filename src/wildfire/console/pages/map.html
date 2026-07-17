@@ -20,6 +20,7 @@
     <div class="card-head">
       <div style="display:flex; align-items:center; gap:9px;">
         <span class="card-title">Hazard Map</span>
+        <select id="time-pick" class="select" style="font-size:11px; padding:4px 8px;"></select>
         <span class="mono" style="font-size:11px; color:var(--muted-3);" id="site-count"></span>
       </div>
       <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);">
@@ -267,13 +268,34 @@ document.getElementById("dlm-start").addEventListener("click", async () => {
   }
 });
 
-Promise.all([api("/api/map-info"), api("/api/map-data")]).then(([info, md]) => {
-  INFO = info; SITES = md.sites;
+/* Time filter: hazards age — last month's dead trees may already be cleared,
+   so the map shows ONE period (default: the latest month with data). */
+function monthLabel(key) {
+  const [y, m] = key.split("-");
+  const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return m ? `${names[+m - 1]} ${y}` : y;
+}
+
+function buildTimePick(md) {
+  const sel = document.getElementById("time-pick");
+  const years = [...new Set(md.months.map(m => m.key.slice(0, 4)))];
+  sel.innerHTML =
+    `<option value="all">All time</option>` +
+    years.map(y => `<option value="${y}">${y} — whole year</option>`).join("") +
+    md.months.map(m => `<option value="${m.key}">${monthLabel(m.key)} · ${m.points} img</option>`).join("");
+  sel.value = md.month;
+}
+
+function render(md) {
+  SITES = md.sites;
+  selectedSite = -1;
   document.getElementById("site-count").textContent =
     `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}`;
+  const period = md.month === "all" ? "all time" : monthLabel(md.month);
   document.getElementById("dedup-note").textContent =
-    `${md.points} flagged image${md.points === 1 ? "" : "s"} merged into ${SITES.length} site${SITES.length === 1 ? "" : "s"} (≤${md.radius_m} m) — overlap dedup, tier 1`;
+    `${period}: ${md.points} flagged image${md.points === 1 ? "" : "s"} → ${SITES.length} site${SITES.length === 1 ? "" : "s"} (≤${md.radius_m} m dedup)`;
   if (INFO.tiles) {
+    if (LMAP) { try { LMAP.map.remove(); } catch (e) {} }
     LMAP = initLeafletSites(document.getElementById("map"), SITES, INFO,
                             { overlays: true, onSelect: i => { selectedSite = i; drawList(); } });
   } else {
@@ -281,6 +303,17 @@ Promise.all([api("/api/map-info"), api("/api/map-data")]).then(([info, md]) => {
     initFallback();
   }
   drawList();
+}
+
+document.getElementById("time-pick").addEventListener("change", e => {
+  api(`/api/map-data?month=${encodeURIComponent(e.target.value)}`)
+    .then(render).catch(err => toast("Failed to load period: " + err.message));
+});
+
+Promise.all([api("/api/map-info"), api("/api/map-data?month=latest")]).then(([info, md]) => {
+  INFO = info;
+  buildTimePick(md);
+  render(md);
 }).catch(e => toast("Failed to load map: " + e.message));
 </script>
 </body>

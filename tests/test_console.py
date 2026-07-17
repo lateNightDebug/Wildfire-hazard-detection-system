@@ -240,6 +240,27 @@ def test_reports_and_settings_api(tmp_path):
     assert client.get("/settings").status_code == 200
 
 
+def test_map_data_month_filter(tmp_path):
+    from src.wildfire.console.data import map_data
+
+    settings = _settings(tmp_path)
+    _make_run(tmp_path, "june_20260610_100000", dead=2, gps=(51.10, -115.40))
+    _make_run(tmp_path, "july_20260710_110000", dead=3, gps=(51.20, -115.30))
+
+    d = map_data(settings)  # default: everything
+    assert d["month"] == "all" and d["points"] == 2
+    assert [m["key"] for m in d["months"]] == ["2026-07", "2026-06"]  # newest first
+
+    d = map_data(settings, month="2026-06")
+    assert d["points"] == 1 and d["sites"][0]["members"][0]["run_id"].startswith("june")
+
+    d = map_data(settings, month="latest")
+    assert d["month"] == "2026-07" and d["points"] == 1
+
+    d = map_data(settings, month="2026")  # whole-year prefix
+    assert d["points"] == 2
+
+
 def test_extract_camera_from_exif(tmp_path):
     from PIL import Image as PILImage
 

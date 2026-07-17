@@ -121,8 +121,10 @@ let selectedPin = null;
 // stylized fallback otherwise — the two maps can no longer disagree.
 function drawMap() {
   const el = document.getElementById("map");
+  const m = window.__mapMonth;
+  const label = (!m || m === "all") ? "" : ` · ${m}`;
   document.getElementById("pin-count").textContent =
-    `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}`;
+    `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}${label}`;
   if (INFO && INFO.tiles) {
     initLeafletSites(el, SITES, INFO, { overlays: false });
     return;
@@ -223,9 +225,10 @@ function drawOverview() {
 
 async function load() {
   const [summary, info, md] = await Promise.all([
-    api("/api/summary"), api("/api/map-info"), api("/api/map-data"),
+    api("/api/summary"), api("/api/map-info"), api("/api/map-data?month=latest"),
   ]);
   SUMMARY = summary; INFO = info; SITES = md.sites;
+  window.__mapMonth = md.month;  // period shown in the map header
   document.getElementById("st-total").textContent = SUMMARY.total_scans;
   document.getElementById("st-high").textContent = SUMMARY.high_risk;
   document.getElementById("st-flagged").textContent = SUMMARY.flagged_scans;
