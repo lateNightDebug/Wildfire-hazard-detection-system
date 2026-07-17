@@ -88,6 +88,7 @@ class Settings:
 
     # --- report ---
     language: str = "English"
+    report_max_image_pages: int = 30  # per-image PDF pages cap (top hazards first)
 
     # --- detection / SAHI ---
     conf_threshold: float = 0.30

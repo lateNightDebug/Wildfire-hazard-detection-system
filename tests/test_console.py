@@ -297,6 +297,23 @@ def test_report_embeds_summary_map(tmp_path):
     assert (tmp_path / "_report_assets" / "summary_map.png").exists()
 
 
+def test_report_image_pages_capped():
+    from src.wildfire.report import select_image_pages
+    from src.wildfire.types import BatchResult, Detection, ImageResult
+
+    def im(name, n_dets):
+        return ImageResult(path=name, name=name, width=10, height=10,
+                           detections=[Detection("d", "Dead Tree", 0.9, (0, 0, 5, 5))] * n_dets)
+
+    batch = BatchResult(images=[im("a", 1), im("b", 9), im("c", 0), im("d", 5)],
+                        stats={}, batch_info={})
+    picked, note = select_image_pages(batch, cap=2)
+    assert [i.name for i in picked] == ["b", "d"]  # hazard-densest first
+    assert "top 2 of 4" in note
+    picked, note = select_image_pages(batch, cap=10)
+    assert len(picked) == 4 and note is None  # under the cap -> everything, no note
+
+
 def test_report_paths_never_collide(tmp_path):
     from src.wildfire.report import latest_report, timestamped_report_path
 

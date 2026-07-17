@@ -382,10 +382,26 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path) -> l
     return story
 
 
+def select_image_pages(batch: BatchResult, cap: int) -> tuple[list[ImageResult], Optional[str]]:
+    """Pick which images get a PDF page: hazard pages ranked by detection count,
+    capped so a 250-image flight yields a readable report, not 250 pages."""
+    flagged = sorted((im for im in batch.images if im.detections),
+                     key=lambda im: len(im.detections), reverse=True)
+    clean = [im for im in batch.images if not im.detections]
+    picked = (flagged + clean)[:max(1, cap)]
+    note = None
+    if len(batch.images) > len(picked):
+        note = (f"Showing the top {len(picked)} of {len(batch.images)} images "
+                "(ranked by detections). Every image and detection remains in "
+                "batch.json and the review console.")
+    return picked, note
+
+
 def build_report(
     batch: BatchResult,
     out_path: str | Path,
     ai_text: Optional[str] = None,
+    max_image_pages: int = 30,
 ) -> Path:
     """Build the PDF field report at `out_path`. Returns the path."""
     out_path = Path(out_path)
@@ -398,9 +414,12 @@ def build_report(
         topMargin=0.7 * inch, bottomMargin=0.6 * inch,
         title="Wildfire Hazardous Tree Mapping — Field Report",
     )
+    picked, cap_note = select_image_pages(batch, max_image_pages)
     story: list = []
     story += _cover(batch)
-    for im in batch.images:
+    if cap_note:
+        story.insert(-1, Paragraph(cap_note, _SMALL))  # before the cover's PageBreak
+    for im in picked:
         story += _image_page(im, assets)
     story += _summary_page(batch, ai_text, assets)
 

@@ -248,9 +248,10 @@ function drawPreview() {
   document.getElementById("thumbs").innerHTML = ims.map((t, i) => {
     const sev = imgSeverity(t);
     const cls = ["thumb", i === curImage ? "sel" : "", sev ? "b-" + sev : ""].join(" ");
-    const src = t.annotated_url || t.original_url || "";
-    return src ? `<img class="${cls}" src="${esc(src)}" data-i="${i}" title="${esc(t.name)}">`
-               : `<div class="${cls}" data-i="${i}" title="${esc(t.name)}"></div>`;
+    // Server-side small thumbs + lazy loading: a 250-image strip must not pull
+    // 250 full-resolution annotated JPEGs into the page.
+    const src = `/api/run-thumb/${encodeURIComponent(RUN_ID)}/${encodeURIComponent(t.name)}`;
+    return `<img class="${cls}" loading="lazy" src="${src}" data-i="${i}" title="${esc(t.name)}">`;
   }).join("");
   document.querySelectorAll("#thumbs [data-i]").forEach(el =>
     el.addEventListener("click", () => {

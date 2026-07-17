@@ -446,6 +446,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"session": session_id,
                 "images": [{"name": n} for n in match["names"]]}
 
+    @app.get("/api/run-thumb/{run_id}/{name}")
+    def api_run_thumb(run_id: str, name: str):
+        """Small cached thumbnail of a run image (annotated preferred) — the
+        detail page's film strip must not load 250 full-size 5 MB JPEGs."""
+        run_dir = app.state.settings.output_path / Path(run_id).name
+        batch = json.loads((run_dir / "batch.json").read_text(encoding="utf-8")) \
+            if (run_dir / "batch.json").exists() else None
+        im = next((i for i in (batch or {}).get("images", []) if i.get("name") == name), None)
+        if im is None:
+            raise HTTPException(404, "unknown image")
+        src = im.get("annotated_path") or im.get("orig_display_path")
+        thumb = ingest.make_thumb(src, app.state.settings.output_path / "_thumbs",
+                                  max_px=220) if src else None
+        if thumb is None:
+            raise HTTPException(404, "unreadable image")
+        return FileResponse(thumb, media_type="image/jpeg")
+
     @app.get("/api/source/thumb/{session_id}/{name}")
     def api_session_thumb(session_id: str, name: str):
         match = _find_session(session_id)
@@ -562,7 +579,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if model:
             ai_text, _ = generate_analysis(build_summary_text(batch), settings.lmstudio_url, model)
 
-        pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text)
+        pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text,
+                           max_image_pages=settings.report_max_image_pages)
         note = "" if reviewed else "Generated from UNREVIEWED proposals — confirm the boxes first for a reviewed report."
         if not model:
             note = (note + " LM Studio offline — AI analysis omitted.").strip()

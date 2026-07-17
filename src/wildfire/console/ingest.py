@@ -25,8 +25,8 @@ from ..imageio_utils import SUPPORTED_EXTS
 # (start hour incl., end hour excl., label); anything else is Night.
 TIME_OF_DAY = [(5, 11, "Morning"), (11, 14, "Midday"), (14, 18, "Afternoon"), (18, 23, "Evening")]
 SESSION_GAP_MINUTES = 45  # a longer pause between shots starts a new session
-MAX_SESSION_IMAGES = 250  # bigger continuous shoots are split into parts —
-# a 1500-image mapping flight is unmanageable as one card / one detection job
+MAX_SESSION_IMAGES = 100  # bigger continuous shoots are split into parts —
+# ~100 images is one review sitting; a 1500-image flight becomes 15 parts
 
 
 def time_of_day(dt: datetime) -> str:
