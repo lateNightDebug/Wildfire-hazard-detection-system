@@ -79,6 +79,10 @@ generates a detailed PDF report for field teams.
 
 Everything runs locally; the only network call is to a local LM Studio server for the report text.
 
+> **End users:** see **[MANUAL.md](MANUAL.md)** for system requirements, installation,
+> the standard field workflow, troubleshooting and known limits.
+> Packaging/distribution: **[INSTALL.md](INSTALL.md)**.
+
 ## Requirements
 
 - Python 3.13
