@@ -8,6 +8,12 @@
 <style>
   .preview-box { overflow:hidden; }
   #stage { transform-origin: 0 0; }
+  @keyframes focusPulse {
+    0%, 100% { box-shadow: 0 0 0 3px #E05555, 0 0 18px 6px #E0555588; }
+    50%      { box-shadow: 0 0 0 10px #E05555cc, 0 0 26px 10px #E05555aa; }
+  }
+  #det-table [data-di] { cursor: pointer; }
+  #det-table [data-di]:hover { background: #faf9f4; }
   #overlay { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
   #overlay rect.box { fill:transparent; stroke-width:2.5; cursor:pointer; }
   #overlay rect.box.sel { stroke-dasharray:6 4; stroke-width:3.5; }
@@ -384,10 +390,12 @@ function drawDetTable() {
       ({ label: d.display, xyxy: d.xyxy || [], score: d.score }));
   }
   document.getElementById("det-table-title").textContent = title;
-  document.getElementById("det-count").textContent = `${rows.length} box${rows.length === 1 ? "" : "es"}`;
+  document.getElementById("det-count").textContent =
+    `${rows.length} box${rows.length === 1 ? "" : "es"} · click a row to locate it`;
   document.getElementById("det-table").innerHTML = rows.length ? `
-    <div style="max-height:260px; overflow-y:auto;">${rows.map(r => `
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:9px 16px; border-bottom:1px solid var(--line-soft); font-size:12px;">
+    <div style="max-height:260px; overflow-y:auto;">${rows.map((r, di) => `
+      <div data-di="${di}" title="Click to zoom to this detection"
+           style="display:flex; align-items:center; justify-content:space-between; padding:9px 16px; border-bottom:1px solid var(--line-soft); font-size:12px;">
         <span style="display:inline-flex; align-items:center; gap:8px;">
           <span style="width:9px; height:9px; border-radius:2px; background:${color(r.label)};"></span>${esc(r.label)}
         </span>
@@ -395,6 +403,49 @@ function drawDetTable() {
         <span class="mono" style="font-weight:600;">${r.score != null ? (r.score * 100).toFixed(0) + "%" : "manual"}</span>
       </div>`).join("")}</div>`
     : '<div class="empty" style="padding:20px;">No boxes in this image.</div>';
+  document.querySelectorAll("#det-table [data-di]").forEach(el =>
+    el.addEventListener("click", () => focusDetection(+el.dataset.di)));
+}
+
+/* Click a detection row -> zoom the preview onto that box and spotlight it.
+   A 100-px flame in a 5280-px frame is invisible at fit-to-screen. */
+function focusDetection(di) {
+  const ims = DETAIL.images_detail;
+  if (!ims.length) return;
+  const im = ims[curImage];
+  const rows = EDIT
+    ? initBoxes(curImage)
+    : (im.detections || []).map(d => ({ x1: d.xyxy[0], y1: d.xyxy[1], x2: d.xyxy[2], y2: d.xyxy[3] }));
+  const b = rows[di];
+  if (!b) return;
+  if (EDIT) { selBox = di; updateEditControls(); }
+  resetZoom();
+  drawPreview();
+  setTimeout(() => {  // not rAF: fires even when the tab is backgrounded
+    const stage = document.getElementById("stage");
+    if (!stage) return;
+    const rc = previewEl.getBoundingClientRect();
+    const r0 = stage.getBoundingClientRect();   // measured at zoom 1
+    const W = im.width || 1, H = im.height || 1;
+    const bw = Math.max((b.x2 - b.x1) / W * r0.width, 4);
+    const bh = Math.max((b.y2 - b.y1) / H * r0.height, 4);
+    zoom = Math.min(12, Math.max(1.5, Math.min(rc.width / (bw * 3), rc.height / (bh * 3))));
+    const sx = (b.x1 + b.x2) / 2 / W * r0.width;   // box center, stage-local @1x
+    const sy = (b.y1 + b.y2) / 2 / H * r0.height;
+    panX = rc.left + rc.width / 2 - r0.left - sx * zoom;
+    panY = rc.top + rc.height / 2 - r0.top - sy * zoom;
+    applyZoom();
+    const old = document.getElementById("focus-ring");
+    if (old) old.remove();
+    const ring = document.createElement("div");
+    ring.id = "focus-ring";
+    ring.style.cssText =
+      `position:absolute; left:${b.x1 / W * 100}%; top:${b.y1 / H * 100}%;` +
+      `width:${(b.x2 - b.x1) / W * 100}%; height:${(b.y2 - b.y1) / H * 100}%;` +
+      `border:2px solid #fff; pointer-events:none; animation:focusPulse 1s ease-in-out 5; z-index:5;`;
+    stage.appendChild(ring);
+    setTimeout(() => ring.remove(), 5200);
+  }, 30);
 }
 
 function drawSummary() {
