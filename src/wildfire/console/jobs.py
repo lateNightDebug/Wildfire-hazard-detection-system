@@ -1,22 +1,26 @@
-"""Background detection jobs for the console: uploads -> run_batch in a thread.
+"""Background detection jobs: each job runs in its own LOW-PRIORITY subprocess
+(src.wildfire.console.worker), never inside the server process — heavy
+inference used to starve the UI event loop and every page went "Failed to
+fetch" while a job ran. The manager just spawns the worker and polls the
+run folder's _progress.json.
 
-One JobManager per server process. Detectors are built lazily on the first job
-(model loading takes ~30s with DeepForest) and reused after that, same as the
-Gradio app. Each job writes a normal run folder (outputs/console_<ts>/ with
-batch.json), so finished jobs show up through the regular discover_scans path.
+Each job writes a normal run folder (outputs/console_<ts>/ with batch.json),
+so finished jobs show up through the regular discover_scans path.
 """
 
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
-import traceback
-from dataclasses import dataclass, field
+import time
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from ..config import Settings
+from ..config import PROJECT_ROOT, Settings
 
 
 @dataclass
@@ -39,8 +43,6 @@ class JobManager:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
-        self._detectors = None
-        self._det_lock = threading.Lock()
 
     # ------------------------------------------------------------- queries
     def get(self, job_id: str) -> Optional[Job]:
@@ -52,49 +54,61 @@ class JobManager:
     def all(self) -> list[Job]:
         return sorted(self._jobs.values(), key=lambda j: j.created, reverse=True)
 
-    # ------------------------------------------------------------- detection
-    def _get_detectors(self, settings: Settings, job: Job):
-        with self._det_lock:
-            if self._detectors is None:
-                job.current = "loading detection models..."
-                from ..detectors import build_detectors
-
-                self._detectors = build_detectors(settings, log=lambda m: print(m))
-            return self._detectors
-
     def reset_detectors(self) -> None:
-        """Drop cached detectors so the next job rebuilds with fresh settings."""
-        with self._det_lock:
-            self._detectors = None
+        """No-op since workers are per-job processes; kept for API compatibility."""
 
+    # ------------------------------------------------------------- detection
     def start_detection(self, image_paths: list[Path], settings: Settings) -> Job:
-        """Kick off a detection run over already-saved image files."""
+        """Spawn a worker process for these images and monitor it."""
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_id = f"console_{ts}"
         job = Job(id=run_id, total=len(image_paths))
         with self._lock:
             self._jobs[run_id] = job
 
-        def work() -> None:
-            try:
-                job.state = "running"
-                detectors = self._get_detectors(settings, job)
-                from ..pipeline import run_batch
+        run_dir = settings.output_path / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        spec_path = run_dir / "_job.json"
+        spec_path.write_text(json.dumps({
+            "paths": [str(p) for p in image_paths],
+            "run_dir": str(run_dir),
+            "batch_label": run_id,
+            "settings": asdict(settings),
+        }), encoding="utf-8")
 
-                def cb(cur: int, tot: int, name: str) -> None:
-                    job.done, job.total, job.current = cur, tot, name
+        # Below-normal priority keeps the console (and the operator's machine)
+        # responsive while torch saturates the cores.
+        flags = (getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                 | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0))
+        log = open(run_dir / "_worker.log", "ab")
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "src.wildfire.console.worker", str(spec_path)],
+            cwd=str(PROJECT_ROOT), creationflags=flags,
+            stdout=log, stderr=subprocess.STDOUT,
+        )
 
-                run_dir = settings.output_path / run_id
-                batch = run_batch([str(p) for p in image_paths], detectors, settings,
-                                  progress=cb, out_dir=run_dir, batch_label=run_id)
-                (run_dir / "batch.json").write_text(
-                    json.dumps(batch.to_dict(), indent=2), encoding="utf-8")
-                job.state = "done"
-                job.current = ""
-            except Exception as e:
-                job.state = "error"
-                job.error = f"{type(e).__name__}: {e}"
-                traceback.print_exc()
+        def monitor() -> None:
+            progress_file = run_dir / "_progress.json"
+            job.state = "running"
+            while True:
+                try:
+                    p = json.loads(progress_file.read_text(encoding="utf-8"))
+                    job.done = int(p.get("done", job.done))
+                    job.total = int(p.get("total", job.total)) or job.total
+                    job.current = p.get("current", "")
+                    if p.get("state") == "error":
+                        job.error = p.get("error")
+                except Exception:
+                    pass  # not written yet / mid-swap
+                rc = proc.poll()
+                if rc is not None:
+                    if job.error is None and rc != 0:
+                        job.error = f"worker exited with code {rc} (see {run_dir.name}/_worker.log)"
+                    job.state = "error" if job.error else "done"
+                    job.current = ""
+                    log.close()
+                    return
+                time.sleep(1.0)
 
-        threading.Thread(target=work, name=f"detect-{run_id}", daemon=True).start()
+        threading.Thread(target=monitor, name=f"monitor-{run_id}", daemon=True).start()
         return job

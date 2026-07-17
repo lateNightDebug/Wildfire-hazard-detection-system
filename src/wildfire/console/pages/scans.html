@@ -258,10 +258,37 @@ function drawSessions(src) {
     box.innerHTML = '<div class="empty" style="padding:14px;">No images found in this folder.</div>';
     return;
   }
-  // group by day, newest first; only the latest day starts expanded so a
-  // month-sized folder stays scannable
+
+  const isDone = s => s.count > 0 && s.analyzed >= s.count;
+  const card = (s, day) => `
+    <div style="border:1px solid var(--border-2); border-radius:10px; padding:10px; background:${isDone(s) ? "#f4f4ef" : "#fdfdf9"};">
+      <div style="display:flex; gap:11px;">
+        ${s.thumb_url
+          ? `<img src="${esc(s.thumb_url)}" style="width:78px; height:58px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4; flex-shrink:0; ${isDone(s) ? "filter:grayscale(.5); opacity:.8;" : ""}">`
+          : `<div style="width:78px; height:58px; border-radius:6px; background:#e6e4da; flex-shrink:0;"></div>`}
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="font-size:13px; font-weight:600;">${PART_ICON[s.part.split(" ")[0]] || ""} ${esc(s.part)} flight
+              ${isDone(s) ? '<span class="badge low" style="margin-left:4px;">ANALYZED</span>'
+                : s.analyzed ? `<span class="badge medium" style="margin-left:4px;">${s.analyzed}/${s.count}</span>` : ""}
+            </div>
+            <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:2px;">${esc(s.start)}–${esc(s.end)} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:6px;">
+            <button class="btn-quiet" style="padding:5px 10px; font-size:12px;" data-pick="${esc(s.id)}"
+                    data-title="${esc(day)} · ${esc(s.part)} · ${esc(s.start)}–${esc(s.end)}">Select images</button>
+            <button class="btn btn-outline" style="padding:5px 12px; font-size:12px;" data-session="${esc(s.id)}">${isDone(s) ? "Re-detect" : "Detect all"}</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  // Pending flights grouped by day (newest day open); fully analyzed flights
+  // collapse into one section at the bottom so they stop cluttering the list.
+  const pending = src.sessions.filter(s => !isDone(s));
+  const analyzed = src.sessions.filter(isDone);
   const byDay = new Map();
-  for (const s of src.sessions) {
+  for (const s of pending) {
     if (!byDay.has(s.day_key)) byDay.set(s.day_key, { day: s.day, sessions: [] });
     byDay.get(s.day_key).sessions.push(s);
   }
@@ -272,32 +299,26 @@ function drawSessions(src) {
     html += `
       <details ${first ? "open" : ""} style="margin-top:10px;">
         <summary style="cursor:pointer; font-size:11px; font-weight:600; letter-spacing:.4px; color:var(--muted-2); padding:4px 0;">
-          ${esc(day).toUpperCase()} — ${sessions.length} flight${sessions.length === 1 ? "" : "s"} · ${total} images
+          ${esc(day).toUpperCase()} — ${sessions.length} flight${sessions.length === 1 ? "" : "s"} · ${total} images · pending
         </summary>
-        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px; margin-top:8px;">`;
-    for (const s of sessions) {
-      html += `
-        <div style="border:1px solid var(--border-2); border-radius:10px; padding:10px; background:#fdfdf9;">
-          <div style="display:flex; gap:11px;">
-            ${s.thumb_url
-              ? `<img src="${esc(s.thumb_url)}" style="width:78px; height:58px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4; flex-shrink:0;">`
-              : `<div style="width:78px; height:58px; border-radius:6px; background:#e6e4da; flex-shrink:0;"></div>`}
-            <div style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
-              <div>
-                <div style="font-size:13px; font-weight:600;">${PART_ICON[s.part] || ""} ${esc(s.part)} flight</div>
-                <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:2px;">${esc(s.start)}–${esc(s.end)} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
-              </div>
-              <div style="display:flex; justify-content:flex-end; gap:6px;">
-                <button class="btn-quiet" style="padding:5px 10px; font-size:12px;" data-pick="${esc(s.id)}"
-                        data-title="${esc(day)} · ${esc(s.part)} · ${esc(s.start)}–${esc(s.end)}">Select images</button>
-                <button class="btn btn-outline" style="padding:5px 12px; font-size:12px;" data-session="${esc(s.id)}">Detect all</button>
-              </div>
-            </div>
-          </div>
-        </div>`;
-    }
-    html += "</div></details>";
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px; margin-top:8px;">
+          ${sessions.map(s => card(s, day)).join("")}
+        </div>
+      </details>`;
     first = false;
+  }
+  if (!pending.length) html += '<div class="empty" style="padding:14px;">All flights analyzed ✓</div>';
+  if (analyzed.length) {
+    const total = analyzed.reduce((a, s) => a + s.count, 0);
+    html += `
+      <details style="margin-top:12px;">
+        <summary style="cursor:pointer; font-size:11px; font-weight:600; letter-spacing:.4px; color:var(--green-2); padding:4px 0;">
+          ✓ ANALYZED — ${analyzed.length} flight${analyzed.length === 1 ? "" : "s"} · ${total} images
+        </summary>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px; margin-top:8px;">
+          ${analyzed.map(s => card(s, s.day)).join("")}
+        </div>
+      </details>`;
   }
   box.innerHTML = html;
   box.querySelectorAll("[data-session]").forEach(btn => btn.addEventListener("click", async () => {

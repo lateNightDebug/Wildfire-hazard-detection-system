@@ -80,13 +80,7 @@ function renderNav(active) {
       ${tab("settings", "Settings", "/settings")}
     </div>
     <div class="nav-right">
-      <div class="live"><span class="live-dot"></span><span class="mono">Local</span></div>
-      <div class="user-chip">
-        <div style="display:flex; flex-direction:column; align-items:flex-end; line-height:1.2;">
-          <span class="name">Operator</span><span class="role">FIELD OPS</span>
-        </div>
-        <div class="avatar">OP</div>
-      </div>
+      <div class="live"><span class="live-dot"></span><span class="mono">Local · Offline</span></div>
     </div>`;
 }
 

@@ -157,11 +157,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         result = _scan_cached(folder)
         sessions = ingest.group_sessions(result["images"])
         thumb_dir = app.state.settings.output_path / "_thumbs"
+        done = data.detected_paths(app.state.settings)
         out_sessions = []
         for s in sessions:
             thumb = ingest.make_thumb(s["paths"][len(s["paths"]) // 2], thumb_dir)
+            analyzed = sum(1 for p in s["paths"] if p in done)
             out_sessions.append({k: v for k, v in s.items() if k != "paths"} | {
                 "thumb_url": f"/outputs/_thumbs/{thumb.name}" if thumb else None,
+                "analyzed": analyzed,
             })
         return {"folder": folder, "exists": True, "images": len(result["images"]),
                 "ignored": result["ignored"], "sessions": out_sessions}

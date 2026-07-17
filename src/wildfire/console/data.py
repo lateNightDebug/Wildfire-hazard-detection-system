@@ -274,6 +274,23 @@ def model_status(settings: Settings) -> list[dict]:
     return out
 
 
+def detected_paths(settings: Settings) -> set[str]:
+    """Source-image paths that already went through a detection run — used to
+    split mission-folder flights into analyzed vs pending."""
+    root = settings.output_path
+    seen: set[str] = set()
+    if not root.is_dir():
+        return seen
+    for run_dir in root.iterdir():
+        if not run_dir.is_dir() or run_dir.name.startswith(("_", ".")):
+            continue
+        batch = _load_json(run_dir / "batch.json")
+        for im in (batch or {}).get("images") or []:
+            if im.get("path"):
+                seen.add(str(im["path"]))
+    return seen
+
+
 # ------------------------------------------------------------------ map sites
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     import math
