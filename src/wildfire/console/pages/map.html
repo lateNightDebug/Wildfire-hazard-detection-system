@@ -278,20 +278,21 @@ function monthLabel(key) {
 
 function buildTimePick(md) {
   const sel = document.getElementById("time-pick");
-  const years = [...new Set(md.months.map(m => m.key.slice(0, 4)))];
+  const months = md.months || [];  // tolerate an older server still running
+  const years = [...new Set(months.map(m => m.key.slice(0, 4)))];
   sel.innerHTML =
     `<option value="all">All time</option>` +
     years.map(y => `<option value="${y}">${y} — whole year</option>`).join("") +
-    md.months.map(m => `<option value="${m.key}">${monthLabel(m.key)} · ${m.points} img</option>`).join("");
-  sel.value = md.month;
+    months.map(m => `<option value="${m.key}">${monthLabel(m.key)} · ${m.points} img</option>`).join("");
+  sel.value = md.month || "all";
 }
 
 function render(md) {
-  SITES = md.sites;
+  SITES = md.sites || [];
   selectedSite = -1;
   document.getElementById("site-count").textContent =
     `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}`;
-  const period = md.month === "all" ? "all time" : monthLabel(md.month);
+  const period = (!md.month || md.month === "all") ? "all time" : monthLabel(md.month);
   document.getElementById("dedup-note").textContent =
     `${period}: ${md.points} flagged image${md.points === 1 ? "" : "s"} → ${SITES.length} site${SITES.length === 1 ? "" : "s"} (≤${md.radius_m} m dedup)`;
   if (INFO.tiles) {

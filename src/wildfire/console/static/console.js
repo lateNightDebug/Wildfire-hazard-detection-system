@@ -61,8 +61,6 @@ function renderNav(active) {
     const cls = "nav-tab" + (active === id ? " active" : "");
     return `<a class="${cls}" href="${href}">${label}</a>`;
   };
-  const soon = label =>
-    `<div class="nav-tab soon">${label}<span class="soon-pill">SOON</span></div>`;
   document.getElementById("topnav").innerHTML = `
     <div class="brand">
       <div style="display:flex; flex-direction:column; line-height:1.15;">
