@@ -34,6 +34,28 @@ def test_build_summary_text_mentions_key_facts():
     assert "2025:05:02" in txt  # capture time from EXIF, not just processing date
 
 
+def test_display_copy_same_stem_different_dirs_no_collision(tmp_path):
+    from PIL import Image as PILImage
+
+    from src.wildfire.report import _display_copy
+
+    for sub, color in (("annotated", (255, 0, 0)), ("gridmaps", (0, 0, 255))):
+        (tmp_path / sub).mkdir()
+        PILImage.new("RGB", (20, 20), color).save(tmp_path / sub / "x_confirmed.jpg")
+    out_a = _display_copy(str(tmp_path / "annotated" / "x_confirmed.jpg"), tmp_path / "assets")
+    out_g = _display_copy(str(tmp_path / "gridmaps" / "x_confirmed.jpg"), tmp_path / "assets")
+    assert out_a != out_g  # used to collide -> grid overwrote the annotated copy
+    with PILImage.open(out_a) as a, PILImage.open(out_g) as g:
+        assert a.getpixel((5, 5))[0] > 200 and g.getpixel((5, 5))[2] > 200
+
+
+def test_pdf_safe_replaces_non_latin1():
+    from src.wildfire.report import _pdf_safe
+
+    assert _pdf_safe("N—S – ‘q’ “w” … →") == "N-S - 'q' \"w\" ... ->"
+    assert "?" in _pdf_safe("汉")  # dropped, never a black box glyph
+
+
 def test_build_report_writes_pdf(tmp_path):
     out = build_report(_sample_batch(), tmp_path / "report.pdf", ai_text="Test analysis paragraph.")
     assert out.exists()

@@ -7,7 +7,7 @@ Layout (landscape Letter):
   - Summary page: batch statistics table + AI analysis/recommendations (Qwen via
     LM Studio; a graceful fallback note is used if the LLM text is unavailable).
 
-No risk classification (per spec) — detections are counted and flagged, not scored.
+No risk classification (per spec) - detections are counted and flagged, not scored.
 Images are downscaled to a display copy before embedding so the PDF stays small.
 """
 
@@ -91,7 +91,7 @@ def _banner(canvas, doc):
     canvas.rect(0, h - 0.45 * inch, w, 0.45 * inch, fill=1, stroke=0)
     canvas.setFillColor(colors.white)
     canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(0.6 * inch, h - 0.32 * inch, "ALBERTA WILDFIRE — DRONE HAZARD DETECTION")
+    canvas.drawString(0.6 * inch, h - 0.32 * inch, "ALBERTA WILDFIRE - DRONE HAZARD DETECTION")
     canvas.restoreState()
 
 
@@ -103,10 +103,16 @@ def _display_copy(src: Optional[str], assets: Path, max_px: int = 1200) -> Optio
     if not p.exists():
         return None
     try:
+        import hashlib
+
         from PIL import Image as PILImage
 
         assets.mkdir(parents=True, exist_ok=True)
-        out = assets / f"disp_{p.stem}.jpg"
+        # Cache key includes the FULL path: annotated/x_confirmed.jpg and
+        # gridmaps/x_confirmed.jpg share a stem and used to overwrite each
+        # other here, putting the grid map in the "Detections" column.
+        tag = hashlib.sha1(str(p.resolve()).encode("utf-8")).hexdigest()[:10]
+        out = assets / f"disp_{tag}_{p.stem}.jpg"
         with PILImage.open(p) as im:
             im = im.convert("RGB")
             im.thumbnail((max_px, max_px))
@@ -119,7 +125,7 @@ def _display_copy(src: Optional[str], assets: Path, max_px: int = 1200) -> Optio
 def _fit_image(path: Optional[str], max_w: float, max_h: float):
     """An Image flowable scaled to fit (max_w, max_h) keeping aspect ratio, or a dash."""
     if not path or not Path(path).exists():
-        return Paragraph("—", _SMALL)
+        return Paragraph("-", _SMALL)
     iw, ih = ImageReader(path).getSize()
     ratio = ih / float(iw)
     w = max_w
@@ -130,6 +136,22 @@ def _fit_image(path: Optional[str], max_w: float, max_h: float):
     return Image(path, width=w, height=h)
 
 
+# LLM output loves typographic punctuation; the built-in PDF fonts are
+# Latin-1/WinAnsi only, so anything outside renders as a black box.
+_PDF_CHAR_MAP = str.maketrans({
+    "—": "-", "–": "-", "‑": "-", "−": "-",  # dashes/minus
+    "‘": "'", "’": "'", "“": '"', "”": '"',
+    "…": "...", "•": "-", " ": " ", "→": "->",
+    "≤": "<=", "≥": ">=", "×": "x", "≈": "~",
+})
+
+
+def _pdf_safe(text: str) -> str:
+    """Map typographic chars to ASCII, then drop anything Latin-1 can't hold."""
+    return (text.translate(_PDF_CHAR_MAP)
+            .encode("latin-1", "replace").decode("latin-1"))
+
+
 def _counts_by_type(im: ImageResult) -> dict:
     return dict(Counter(d.display for d in im.detections))
 
@@ -137,7 +159,7 @@ def _counts_by_type(im: ImageResult) -> dict:
 def _fmt_counts(counts: dict) -> str:
     """'{"Dead Tree": 68}' -> 'Dead Tree: 68'."""
     if not counts:
-        return "—"
+        return "-"
     return ", ".join(f"{k}: {v}" for k, v in counts.items())
 
 
@@ -146,7 +168,7 @@ def build_summary_text(batch: BatchResult) -> str:
 
     The analysis can only be as professional as the data it is grounded in, so
     this includes flight metadata, spatial extent, density and confidence
-    statistics, review status, and a ranked hotspot list — not just totals.
+    statistics, review status, and a ranked hotspot list - not just totals.
     """
     s = batch.stats
     bi = batch.batch_info
@@ -168,7 +190,7 @@ def build_summary_text(batch: BatchResult) -> str:
         lat0, lat1 = min(p[0] for p in gps_pts), max(p[0] for p in gps_pts)
         lon0, lon1 = min(p[1] for p in gps_pts), max(p[1] for p in gps_pts)
         ext_ns = (lat1 - lat0) * 111_320
-        ext_ew = (lon1 - lon0) * 111_320 * 0.63  # cos(51°) — good enough for Alberta
+        ext_ew = (lon1 - lon0) * 111_320 * 0.63  # cos(51°) - good enough for Alberta
         lines.append(f"Surveyed extent: ~{ext_ns:.0f} m N-S x {ext_ew:.0f} m E-W "
                      f"(bbox {lat0:.5f},{lon0:.5f} to {lat1:.5f},{lon1:.5f}).")
 
@@ -207,7 +229,7 @@ def _cover(batch: BatchResult) -> list:
     story = [
         Spacer(1, 0.6 * inch),
         Paragraph("Wildfire Hazardous Tree Mapping", _H1),
-        Paragraph("Drone Forest Hazard Detection — Field Report", _H2),
+        Paragraph("Drone Forest Hazard Detection - Field Report", _H2),
         Spacer(1, 0.3 * inch),
     ]
     info = [
@@ -252,12 +274,12 @@ def _image_page(im: ImageResult, assets: Path) -> list:
     ]))
 
     counts = _counts_by_type(im)
-    gps = f"{im.gps[0]:.6f}, {im.gps[1]:.6f}" if im.gps else "—"
+    gps = f"{im.gps[0]:.6f}, {im.gps[1]:.6f}" if im.gps else "-"
     meta = [
         ["Image", im.name, "Detections", str(len(im.detections))],
         ["GPS (lat, lon)", gps, "By type", _fmt_counts(counts)],
-        ["Altitude (m)", str(im.altitude if im.altitude is not None else "—"),
-         "Timestamp", str(im.timestamp or "—")],
+        ["Altitude (m)", str(im.altitude if im.altitude is not None else "-"),
+         "Timestamp", str(im.timestamp or "-")],
     ]
     mt = Table(meta, colWidths=[1.6 * inch, 3.4 * inch, 1.4 * inch, 2.4 * inch])
     mt.setStyle(TableStyle([
@@ -298,13 +320,16 @@ def _pin_map_png(batch: BatchResult, assets: Path) -> Optional[Path]:
     if not pts:
         return None
 
+    # Print-friendly light theme - the console's dark map reads as a black
+    # rectangle on paper.
     W, H = 900, 540
-    img = PILImage.new("RGB", (W, H), (22, 26, 27))
+    img = PILImage.new("RGB", (W, H), (255, 255, 255))
     d = ImageDraw.Draw(img)
     for x in range(0, W, 64):
-        d.line([(x, 0), (x, H)], fill=(32, 38, 36))
+        d.line([(x, 0), (x, H)], fill=(228, 228, 220))
     for y in range(0, H, 64):
-        d.line([(0, y), (W, y)], fill=(32, 38, 36))
+        d.line([(0, y), (W, y)], fill=(228, 228, 220))
+    d.rectangle([0, 0, W - 1, H - 1], outline=(180, 180, 172))
 
     lats = [p[0] for p in pts]
     lons = [p[1] for p in pts]
@@ -315,16 +340,16 @@ def _pin_map_png(batch: BatchResult, assets: Path) -> Optional[Path]:
         px = (pad + (lon - min(lons)) / lon_span * (1 - 2 * pad)) * W
         py = (pad + (max(lats) - lat) / lat_span * (1 - 2 * pad)) * H  # north = up
         d.ellipse([px - 7, py - 7, px + 7, py + 7], fill=color,
-                  outline=(255, 255, 255), width=2)
+                  outline=(70, 70, 64), width=2)
 
     legend = [("Flame", (224, 85, 85)), ("Smoke", (240, 165, 0)),
               ("Dead tree", (255, 215, 0)), ("No detections", (58, 154, 58))]
     x = 16
     for label, color in legend:
-        d.ellipse([x, H - 26, x + 12, H - 14], fill=color, outline=(255, 255, 255))
-        d.text((x + 18, H - 26), label, fill=(205, 214, 192))
+        d.ellipse([x, H - 26, x + 12, H - 14], fill=color, outline=(70, 70, 64))
+        d.text((x + 18, H - 26), label, fill=(60, 60, 55))
         x += 18 + 8 * len(label) + 24
-    d.text((16, 12), "Relative GPS positions - north up - not to scale", fill=(154, 154, 146))
+    d.text((16, 12), "Relative GPS positions - north up - not to scale", fill=(110, 110, 102))
 
     assets.mkdir(parents=True, exist_ok=True)
     dest = assets / "summary_map.png"
@@ -361,8 +386,9 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path) -> l
                   _fit_image(str(map_png), 6.6 * inch, 3.9 * inch),
                   Spacer(1, 0.25 * inch)]
     story.append(Paragraph("AI Analysis & Recommendations", _H2))
-    body = ai_text or ("[Automated AI analysis unavailable — LM Studio was not reachable. "
+    body = ai_text or ("[Automated AI analysis unavailable - LM Studio was not reachable. "
                        "Start the local LM Studio server and load the model to include analysis.]")
+    body = _pdf_safe(body)
     import re as _re
 
     for para in body.split("\n\n"):
@@ -412,7 +438,7 @@ def build_report(
         str(out_path), pagesize=PAGE,
         leftMargin=0.6 * inch, rightMargin=0.6 * inch,
         topMargin=0.7 * inch, bottomMargin=0.6 * inch,
-        title="Wildfire Hazardous Tree Mapping — Field Report",
+        title="Wildfire Hazardous Tree Mapping - Field Report",
     )
     picked, cap_note = select_image_pages(batch, max_image_pages)
     story: list = []
