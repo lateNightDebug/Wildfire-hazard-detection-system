@@ -76,7 +76,6 @@ function renderNav(active) {
       ${tab("review", "Review", "/review")}
       ${tab("map", "Map", "/map")}
       ${tab("reports", "Reports", "/reports")}
-      ${soon("Alerts")}
       ${tab("settings", "Settings", "/settings")}
     </div>
     <div class="nav-right">

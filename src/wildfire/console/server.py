@@ -19,6 +19,7 @@ import sys
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import cv2
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -48,8 +49,13 @@ class SessionBody(BaseModel):
 
 
 class TilesBody(BaseModel):
+    mode: str = "scans"  # "scans" (bbox from scan GPS) or "bbox" (explicit)
+    bbox: Optional[list[float]] = None  # [lat_min, lon_min, lat_max, lon_max]
     zmin: int = 12
     zmax: int = 16
+
+
+MAX_TILES_PER_DOWNLOAD = 30000  # ~1.5 GB — protects against province@z16 mistakes
 
 
 class LabelsBody(BaseModel):
@@ -284,17 +290,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/map/download")
     def api_map_download(body: TilesBody):
-        """Download tiles for the area covered by all scans (internet required)."""
+        """Download tiles for a chosen area (internet required): the scanned
+        area, or an explicit bbox (province preset / custom rectangle)."""
         from . import tiles as tiles_mod
 
         job = getattr(app.state, "tile_job", None)
         if job and job.get("state") == "running":
             return JSONResponse(job, status_code=409)
-        pts = [tuple(s["gps"]) for s in data.discover_scans(app.state.settings) if s["gps"]]
-        bbox = tiles_mod.bbox_from_points(pts)
-        if bbox is None:
-            raise HTTPException(400, "no GPS-tagged scans yet — cannot infer the area")
+        if body.mode == "bbox":
+            b = body.bbox or []
+            if len(b) != 4 or not (b[0] < b[2] and b[1] < b[3]):
+                raise HTTPException(400, "bbox must be [lat_min, lon_min, lat_max, lon_max]")
+            bbox = tuple(float(v) for v in b)
+        else:
+            pts = [tuple(s["gps"]) for s in data.discover_scans(app.state.settings) if s["gps"]]
+            bbox = tiles_mod.bbox_from_points(pts)
+            if bbox is None:
+                raise HTTPException(400, "no GPS-tagged scans yet — cannot infer the area")
         zmin, zmax = max(3, body.zmin), min(17, max(body.zmin, body.zmax))
+        n_tiles = len(tiles_mod.tile_list(bbox, zmin, zmax))
+        if n_tiles > MAX_TILES_PER_DOWNLOAD:
+            raise HTTPException(400, f"{n_tiles} tiles requested — over the {MAX_TILES_PER_DOWNLOAD} "
+                                     "cap. Shrink the area or lower the max zoom.")
         job = {"state": "running", "done": 0, "total": len(tiles_mod.tile_list(bbox, zmin, zmax)),
                "failed": 0, "bbox": list(bbox)}
         app.state.tile_job = job

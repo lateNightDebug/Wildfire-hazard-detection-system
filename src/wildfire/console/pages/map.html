@@ -26,12 +26,12 @@
         <span><span class="legend-dot" style="background:#E05555;"></span> Flame</span>
         <span><span class="legend-dot" style="background:#F0A500;"></span> Smoke</span>
         <span><span class="legend-dot" style="background:#FFD700;"></span> Dead Tree</span>
+        <button id="open-dl" class="btn-quiet" style="padding:5px 10px; font-size:11px;">⬇ Map data</button>
       </div>
     </div>
     <div id="tiles-banner" style="display:none; padding:10px 16px; background:#f4ecd6; border-bottom:1px solid #e6dab8; font-size:12px; color:#6b5a2a;">
-      No offline satellite tiles for this area yet.
-      <button id="dl-tiles" class="btn-quiet" style="padding:5px 10px; margin-left:8px;">Download map for current area</button>
-      <span id="dl-tiles-status" class="mono" style="font-size:11px; margin-left:8px;"></span>
+      No offline satellite tiles for this area yet — the map below is a stylized placeholder.
+      <button id="dl-tiles" class="btn-quiet" style="padding:5px 10px; margin-left:8px;">Choose area &amp; download…</button>
     </div>
     <div class="map-wrap" id="map" style="min-height:0; position:relative;"></div>
   </div>
@@ -42,6 +42,62 @@
       <div style="font-size:11px; color:var(--muted-3); margin-top:3px;" id="dedup-note"></div>
     </div>
     <div style="flex:1; overflow-y:auto;" id="site-list"></div>
+  </div>
+</div>
+
+<!-- MAP DOWNLOAD MODAL: pick the area before fetching tiles (internet required) -->
+<div id="dl-modal" style="display:none; position:fixed; inset:0; background:rgba(20,20,15,.55); z-index:1300;">
+  <div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:520px; max-width:92vw; background:#fff; border-radius:14px; padding:20px 22px; box-shadow:0 24px 80px rgba(0,0,0,.35);">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <span style="font-size:15px; font-weight:600;">Download offline map</span>
+      <button id="dlm-close" class="btn-quiet" style="padding:5px 10px;">✕</button>
+    </div>
+    <div style="font-size:11px; color:var(--muted-3); margin-bottom:14px;">
+      Needs internet once — afterwards the map works fully offline (Esri World Imagery, offline-export permitted).
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer; border:1px solid var(--border-2); border-radius:10px; padding:10px 12px;">
+        <input type="radio" name="dlm-mode" value="scans" checked style="margin-top:3px;">
+        <span>
+          <span style="font-size:13px; font-weight:600;">Around my scanned area <span style="color:var(--green); font-weight:600;">(recommended)</span></span><br>
+          <span style="font-size:11px; color:var(--muted-2);">High detail (zoom 12–16) covering every GPS-tagged run, plus a margin</span>
+        </span>
+      </label>
+      <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer; border:1px solid var(--border-2); border-radius:10px; padding:10px 12px;">
+        <input type="radio" name="dlm-mode" value="alberta" style="margin-top:3px;">
+        <span>
+          <span style="font-size:13px; font-weight:600;">Alberta — whole province base map</span><br>
+          <span style="font-size:11px; color:var(--muted-2);">Overview only (zoom 8–11); pair it with a high-detail area download</span>
+        </span>
+      </label>
+      <label style="display:flex; gap:10px; align-items:flex-start; cursor:pointer; border:1px solid var(--border-2); border-radius:10px; padding:10px 12px;">
+        <input type="radio" name="dlm-mode" value="custom" style="margin-top:3px;">
+        <span style="flex:1;">
+          <span style="font-size:13px; font-weight:600;">Custom rectangle</span>
+          <div id="dlm-custom" style="display:none; margin-top:8px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+              <input class="select" id="dlm-latmin" placeholder="lat min (e.g. 51.05)" spellcheck="false">
+              <input class="select" id="dlm-latmax" placeholder="lat max (e.g. 51.17)" spellcheck="false">
+              <input class="select" id="dlm-lonmin" placeholder="lon min (e.g. -115.48)" spellcheck="false">
+              <input class="select" id="dlm-lonmax" placeholder="lon max (e.g. -115.28)" spellcheck="false">
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; margin-top:6px; font-size:12px; color:var(--muted-2);">
+              zoom
+              <select class="select" id="dlm-zmin"><option>8</option><option>10</option><option selected>12</option><option>14</option></select>
+              to
+              <select class="select" id="dlm-zmax"><option>11</option><option>13</option><option>15</option><option selected>16</option></select>
+            </div>
+          </div>
+        </span>
+      </label>
+    </div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:16px;">
+      <span class="mono" style="font-size:12px; color:var(--muted-2);" id="dlm-estimate">—</span>
+      <button id="dlm-start" class="btn btn-primary" style="padding:9px 18px;">Start download</button>
+    </div>
+    <div class="mono" style="font-size:11px; color:var(--muted-3); margin-top:8px;" id="dlm-progress"></div>
   </div>
 </div>
 
@@ -121,23 +177,92 @@ function drawList() {
     }));
 }
 
-/* -------------------------------------------------- tile download */
-document.getElementById("dl-tiles").addEventListener("click", async () => {
-  const btn = document.getElementById("dl-tiles");
-  const st = document.getElementById("dl-tiles-status");
+/* -------------------------------------------------- tile download modal */
+const ALBERTA = [49.0, -120.0, 60.0, -110.0];
+
+function deg2num(lat, lon, z) {
+  const n = 2 ** z;
+  const x = Math.floor((lon + 180) / 360 * n);
+  const rad = lat * Math.PI / 180;
+  const y = Math.floor((1 - Math.asinh(Math.tan(rad)) / Math.PI) / 2 * n);
+  return [x, y];
+}
+
+function tileCount(bbox, zmin, zmax) {
+  let total = 0;
+  for (let z = zmin; z <= zmax; z++) {
+    const [x0, y1] = deg2num(bbox[0], bbox[1], z);
+    const [x1, y0] = deg2num(bbox[2], bbox[3], z);
+    total += (Math.abs(x1 - x0) + 1) * (Math.abs(y1 - y0) + 1);
+  }
+  return total;
+}
+
+function scanBbox() {
+  if (!SITES.length) return null;
+  const lats = SITES.map(s => s.lat), lons = SITES.map(s => s.lon);
+  const pad = 0.04;
+  return [Math.min(...lats) - pad, Math.min(...lons) - pad,
+          Math.max(...lats) + pad, Math.max(...lons) + pad];
+}
+
+function dlmSelection() {
+  const mode = document.querySelector('[name="dlm-mode"]:checked').value;
+  if (mode === "scans") {
+    return { body: { mode: "scans", zmin: 12, zmax: 16 }, bbox: scanBbox(), zmin: 12, zmax: 16 };
+  }
+  if (mode === "alberta") {
+    return { body: { mode: "bbox", bbox: ALBERTA, zmin: 8, zmax: 11 }, bbox: ALBERTA, zmin: 8, zmax: 11 };
+  }
+  const v = id => parseFloat(document.getElementById(id).value);
+  const bbox = [v("dlm-latmin"), v("dlm-lonmin"), v("dlm-latmax"), v("dlm-lonmax")];
+  const zmin = +document.getElementById("dlm-zmin").value;
+  const zmax = +document.getElementById("dlm-zmax").value;
+  const valid = bbox.every(Number.isFinite) && bbox[0] < bbox[2] && bbox[1] < bbox[3] && zmin <= zmax;
+  return { body: { mode: "bbox", bbox, zmin, zmax }, bbox: valid ? bbox : null, zmin, zmax };
+}
+
+function dlmUpdate() {
+  const mode = document.querySelector('[name="dlm-mode"]:checked').value;
+  document.getElementById("dlm-custom").style.display = mode === "custom" ? "" : "none";
+  const est = document.getElementById("dlm-estimate");
+  const sel = dlmSelection();
+  if (mode === "scans" && !sel.bbox) { est.textContent = "no GPS-tagged runs yet"; return; }
+  if (!sel.bbox) { est.textContent = "enter a valid rectangle"; return; }
+  const n = tileCount(sel.bbox, sel.zmin, sel.zmax);
+  est.textContent = `≈ ${n.toLocaleString()} tiles · ~${Math.round(n * 45 / 1024)} MB` +
+                    (n > 30000 ? " · over the 30k cap!" : "");
+}
+
+function openDlModal() { document.getElementById("dl-modal").style.display = ""; dlmUpdate(); }
+document.getElementById("open-dl").addEventListener("click", openDlModal);
+document.getElementById("dl-tiles").addEventListener("click", openDlModal);
+document.getElementById("dlm-close").addEventListener("click", () =>
+  document.getElementById("dl-modal").style.display = "none");
+document.getElementById("dl-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("dl-modal"))
+    document.getElementById("dl-modal").style.display = "none";
+});
+document.querySelectorAll('[name="dlm-mode"]').forEach(r => r.addEventListener("change", dlmUpdate));
+["dlm-latmin", "dlm-latmax", "dlm-lonmin", "dlm-lonmax", "dlm-zmin", "dlm-zmax"].forEach(id =>
+  document.getElementById(id).addEventListener("input", dlmUpdate));
+
+document.getElementById("dlm-start").addEventListener("click", async () => {
+  const btn = document.getElementById("dlm-start");
+  const prog = document.getElementById("dlm-progress");
   btn.disabled = true;
   try {
     await api("/api/map/download", { method: "POST", headers: { "Content-Type": "application/json" },
-                                     body: JSON.stringify({}) });
+                                     body: JSON.stringify(dlmSelection().body) });
     const timer = setInterval(async () => {
       const s = await api("/api/map/download/status").catch(() => null);
       if (!s) return;
-      st.textContent = `${s.done || 0}/${s.total || "?"} tiles${s.failed ? ` · ${s.failed} failed` : ""}`;
+      prog.textContent = `${s.done || 0}/${s.total || "?"} tiles${s.failed ? ` · ${s.failed} failed` : ""}`;
       if (s.state === "done") { clearInterval(timer); location.reload(); }
-      if (s.state === "error") { clearInterval(timer); st.textContent = "failed: " + (s.error || ""); btn.disabled = false; }
+      if (s.state === "error") { clearInterval(timer); prog.textContent = "failed: " + (s.error || ""); btn.disabled = false; }
     }, 1500);
   } catch (e) {
-    st.textContent = e.message;
+    prog.textContent = e.message;
     btn.disabled = false;
   }
 });
