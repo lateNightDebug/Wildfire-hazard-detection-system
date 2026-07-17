@@ -85,14 +85,29 @@
   </div>
 </div>
 
-<!-- SEVERITY DISTRIBUTION -->
-<div class="card" style="margin:16px 28px 0; padding:18px 22px 22px;">
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-    <span class="card-title">Severity Distribution</span>
+<!-- HAZARD OVERVIEW -->
+<div class="card" style="margin:16px 28px 0; padding:18px 22px;">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+    <span class="card-title">Hazard Overview</span>
     <span class="mono" style="font-size:11px; color:var(--muted-3);" id="dist-note"></span>
   </div>
-  <div class="bars" id="bars"></div>
-  <div class="bar-labels"><span>High</span><span>Medium</span><span>Low</span></div>
+  <div style="display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:28px; align-items:start;">
+    <div>
+      <div style="font-size:11px; font-weight:600; letter-spacing:.3px; color:var(--muted-2); margin-bottom:10px;">DETECTIONS BY TYPE</div>
+      <div id="type-bars" style="display:flex; flex-direction:column; gap:9px;"></div>
+    </div>
+    <div>
+      <div style="font-size:11px; font-weight:600; letter-spacing:.3px; color:var(--muted-2); margin-bottom:10px;">REVIEW BACKLOG</div>
+      <div class="mono" style="font-size:30px; font-weight:600; color:var(--amber-text);" id="ov-pending">—</div>
+      <div style="font-size:12px; color:var(--muted-2); margin-top:2px;" id="ov-pending-note"></div>
+      <a class="link-green" href="/review" style="font-size:12px; display:inline-block; margin-top:8px;">Review now →</a>
+    </div>
+    <div>
+      <div style="font-size:11px; font-weight:600; letter-spacing:.3px; color:var(--muted-2); margin-bottom:10px;">TRAINING SET</div>
+      <div class="mono" style="font-size:30px; font-weight:600; color:var(--green);" id="ov-training">—</div>
+      <div style="font-size:12px; color:var(--muted-2); margin-top:2px;">human-confirmed boxes (labels.json) — fuels the next Custom Vision round</div>
+    </div>
+  </div>
 </div>
 
 <script src="/static/console.js"></script>
@@ -180,18 +195,30 @@ function drawRecent() {
     '<div class="empty">No scans yet — run a detection from the Scans page.</div>';
 }
 
-function drawBars() {
-  const c = SUMMARY.severity_counts;
-  const max = Math.max(c.high, c.medium, c.low, 1);
-  const bar = (n, color) => `
-    <div class="bar-col">
-      <span class="bar-num" style="color:${color};">${n}</span>
-      <div class="bar" style="height:${Math.max((n / max) * 100, 2)}%; background:${color};"></div>
-    </div>`;
-  document.getElementById("bars").innerHTML =
-    bar(c.high, "#E05555") + bar(c.medium, "#F0A500") + bar(c.low, "#3A9A3A");
+function drawOverview() {
+  const totals = SUMMARY.type_totals || {};
+  const order = ["Dead Tree", "Flame", "Smoke"];
+  const keys = [...order.filter(k => totals[k]), ...Object.keys(totals).filter(k => !order.includes(k))];
+  const max = Math.max(...keys.map(k => totals[k]), 1);
+  document.getElementById("type-bars").innerHTML = keys.map(k => {
+    const kind = k === "Flame" ? "flame" : k === "Smoke" ? "smoke" : "deadtree";
+    const c = KIND[kind].color;
+    return `
+      <div style="display:grid; grid-template-columns:80px 1fr 52px; gap:10px; align-items:center;">
+        <span style="font-size:12px; color:var(--text-2);">${esc(k)}</span>
+        <div class="hbar"><div style="width:${Math.max((totals[k] / max) * 100, 2)}%; background:${c};"></div></div>
+        <span class="mono" style="font-size:13px; font-weight:600; text-align:right;">${totals[k]}</span>
+      </div>`;
+  }).join("") || '<div style="font-size:12px; color:var(--muted-3);">No detections yet.</div>';
+
+  const rv = SUMMARY.review || { pending: 0, reviewed: 0 };
+  document.getElementById("ov-pending").textContent = rv.pending;
+  document.getElementById("ov-pending-note").textContent =
+    rv.pending ? `flagged run${rv.pending === 1 ? "" : "s"} awaiting confirmation · ${rv.reviewed} reviewed`
+               : `all caught up · ${rv.reviewed} run${rv.reviewed === 1 ? "" : "s"} reviewed`;
+  document.getElementById("ov-training").textContent = SUMMARY.training_boxes ?? 0;
   document.getElementById("dist-note").textContent =
-    `${SUMMARY.flagged_scans} flagged scan${SUMMARY.flagged_scans === 1 ? "" : "s"} · display severity from dead-tree density + flame/smoke`;
+    `${SUMMARY.flagged_scans} flagged scan${SUMMARY.flagged_scans === 1 ? "" : "s"} across ${SUMMARY.total_scans} run${SUMMARY.total_scans === 1 ? "" : "s"}`;
 }
 
 async function load() {
@@ -209,7 +236,7 @@ async function load() {
     document.getElementById("st-last").textContent = "—";
     document.getElementById("st-last-note").textContent = "no runs yet";
   }
-  drawMap(); drawRecent(); drawBars();
+  drawMap(); drawRecent(); drawOverview();
 }
 
 document.getElementById("q").addEventListener("input", drawRecent);

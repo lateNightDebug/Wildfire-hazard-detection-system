@@ -418,16 +418,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return match
 
     @app.get("/api/source/session/{session_id}")
-    def api_session_images(session_id: str, thumbs: int = 100):
-        """Image list of one flight for the pre-detection picker (thumbs capped)."""
+    def api_session_images(session_id: str):
+        """Image names of one flight — instant. Thumbnails load lazily per image
+        via /api/source/thumb/... so opening the picker never blocks."""
         match = _find_session(session_id)
-        thumb_dir = app.state.settings.output_path / "_thumbs"
-        images = []
-        for i, (name, path) in enumerate(zip(match["names"], match["paths"])):
-            t = ingest.make_thumb(path, thumb_dir, max_px=240) if i < thumbs else None
-            images.append({"name": name,
-                           "thumb_url": f"/outputs/_thumbs/{t.name}" if t else None})
-        return {"session": session_id, "images": images}
+        return {"session": session_id,
+                "images": [{"name": n} for n in match["names"]]}
+
+    @app.get("/api/source/thumb/{session_id}/{name}")
+    def api_session_thumb(session_id: str, name: str):
+        match = _find_session(session_id)
+        try:
+            idx = match["names"].index(name)
+        except ValueError:
+            raise HTTPException(404, "image not in this session")
+        thumb = ingest.make_thumb(match["paths"][idx],
+                                  app.state.settings.output_path / "_thumbs", max_px=300)
+        if thumb is None:
+            raise HTTPException(404, "unreadable image")
+        return FileResponse(thumb, media_type="image/jpeg")
 
     @app.post("/api/detect-session")
     def api_detect_session(body: SessionBody):

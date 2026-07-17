@@ -47,7 +47,8 @@ button { font-family: inherit; }
 .topnav {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 28px; height: 64px; background: var(--card);
-  border-bottom: 1px solid var(--border-2); position: sticky; top: 0; z-index: 20;
+  border-bottom: 1px solid var(--border-2); position: sticky; top: 0;
+  z-index: 1100; /* above Leaflet panes (up to ~1000) */
 }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-icon {
@@ -198,7 +199,10 @@ button { font-family: inherit; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; }
 
 /* ------------------------------------------------------------- map */
-.map-wrap { position: relative; flex: 1; min-height: 440px; background: #161a1b; overflow: hidden; }
+.map-wrap {
+  position: relative; flex: 1; min-height: 440px; background: #161a1b;
+  overflow: hidden; isolation: isolate; /* cap Leaflet's z-indexes inside the card */
+}
 .map-grid-overlay {
   position: absolute; inset: 0; pointer-events: none;
   background-image: linear-gradient(#ffffff0a 1px, transparent 1px),

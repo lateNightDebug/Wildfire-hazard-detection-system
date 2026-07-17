@@ -352,11 +352,20 @@ def dashboard_summary(settings: Settings) -> dict:
     scans = discover_scans(settings)
     sev_counts = {"high": 0, "medium": 0, "low": 0}
     flagged = 0
+    type_totals: dict[str, int] = {}
+    reviewed_runs = pending_review = training_boxes = 0
     for s in scans:
         if s["severity"]:
             sev_counts[s["severity"]] += 1
         if s["total_detections"]:
             flagged += 1
+        for k, v in s["detections_by_type"].items():
+            type_totals[k] = type_totals.get(k, 0) + v
+        if s["reviewed"]:
+            reviewed_runs += 1
+            training_boxes += s["total_detections"]  # reviewed counts = confirmed boxes
+        elif s["total_detections"]:
+            pending_review += 1
 
     pins = []
     for s in scans:
@@ -373,6 +382,9 @@ def dashboard_summary(settings: Settings) -> dict:
         "flagged_scans": flagged,
         "last_scan": {"date": last["date"], "time": last["time"], "id": last["id"]} if last else None,
         "severity_counts": sev_counts,
+        "type_totals": type_totals,
+        "review": {"reviewed": reviewed_runs, "pending": pending_review},
+        "training_boxes": training_boxes,
         "recent": scans[:12],
         "pins": pins,
     }

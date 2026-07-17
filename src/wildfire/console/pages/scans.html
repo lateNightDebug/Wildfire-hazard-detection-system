@@ -91,6 +91,23 @@
     </div>
   </div>
 
+  <!-- IMAGE PICKER MODAL (second-level window: big thumbnails, lazy-loaded) -->
+  <div id="picker-modal" style="display:none; position:fixed; inset:0; background:rgba(20,20,15,.55); z-index:1300;">
+    <div style="position:absolute; inset:3% 5%; background:#fff; border-radius:14px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 24px 80px rgba(0,0,0,.35);">
+      <div style="display:flex; align-items:center; gap:14px; padding:14px 20px; border-bottom:1px solid var(--line);">
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:14px; font-weight:600;" id="pm-title"></div>
+          <div class="mono" style="font-size:11px; color:var(--muted-3);" id="pm-sub"></div>
+        </div>
+        <label class="mono" style="font-size:12px; cursor:pointer;"><input type="checkbox" id="pm-all" checked> all</label>
+        <span class="mono" style="font-size:12px; color:var(--muted-2);" id="pm-count"></span>
+        <button id="pm-run" class="btn btn-primary" style="padding:8px 16px;">Detect selected</button>
+        <button id="pm-close" class="btn-quiet" style="padding:8px 12px;">✕ Close</button>
+      </div>
+      <div id="pm-grid" style="flex:1; overflow-y:auto; padding:14px 20px; display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; align-content:start;"></div>
+    </div>
+  </div>
+
   <!-- SCANS TABLE -->
   <div class="card" style="overflow:hidden;">
     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:16px 20px; border-bottom:1px solid var(--line);">
@@ -167,59 +184,66 @@ async function queueDetection(btn, sessionId, names) {
   }
 }
 
-/* Expandable per-flight image picker: choose a subset before analysing. */
-async function togglePicker(sess, holder, btn) {
-  if (holder.dataset.open === "1") {
-    holder.style.display = "none"; holder.dataset.open = "0";
-    btn.textContent = "Select images"; return;
-  }
-  holder.style.display = ""; holder.dataset.open = "1";
-  btn.textContent = "Hide";
-  if (!holder.dataset.loaded) {
-    holder.innerHTML = '<div class="mono" style="font-size:11px; color:var(--muted-3); padding:8px;">Loading image list…</div>';
-    try {
-      const d = await api(`/api/source/session/${encodeURIComponent(sess)}`);
-      holder.innerHTML = `
-        <div style="display:flex; align-items:center; gap:10px; padding:6px 2px;">
-          <label class="mono" style="font-size:11px; cursor:pointer;"><input type="checkbox" data-all checked> all</label>
-          <span class="mono" style="font-size:11px; color:var(--muted-3);" data-count></span>
-          <span style="flex:1;"></span>
-          <button class="btn btn-primary" style="padding:5px 12px; font-size:12px;" data-run>Detect selected</button>
+/* Second-level picker window: full-screen modal, big thumbnails, native lazy
+   loading — only the thumbnails you scroll to are generated/fetched. */
+let pmSession = null;
+
+function pmUpdateCount() {
+  const grid = document.getElementById("pm-grid");
+  const n = grid.querySelectorAll("[data-name]:checked").length;
+  document.getElementById("pm-count").textContent = `${n} selected`;
+  document.getElementById("pm-run").disabled = n === 0;
+}
+
+async function openPicker(sess, title) {
+  pmSession = sess;
+  const modal = document.getElementById("picker-modal");
+  const grid = document.getElementById("pm-grid");
+  document.getElementById("pm-title").textContent = title;
+  document.getElementById("pm-sub").textContent = "loading image list…";
+  document.getElementById("pm-all").checked = true;
+  grid.innerHTML = "";
+  modal.style.display = "";
+  try {
+    const d = await api(`/api/source/session/${encodeURIComponent(sess)}`);
+    document.getElementById("pm-sub").textContent =
+      `${d.images.length} images — untick the ones to skip, thumbnails load as you scroll`;
+    grid.innerHTML = d.images.map(im => `
+      <label style="cursor:pointer;">
+        <img loading="lazy" src="/api/source/thumb/${encodeURIComponent(sess)}/${encodeURIComponent(im.name)}"
+             style="width:100%; height:112px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4; background:#e6e4da; display:block;">
+        <div class="mono" style="font-size:10px; color:var(--muted-2); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+          <input type="checkbox" data-name="${esc(im.name)}" checked style="vertical-align:middle;"> ${esc(im.name)}
         </div>
-        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:6px; max-height:260px; overflow-y:auto; padding:4px 2px;">
-          ${d.images.map(im => `
-            <label style="cursor:pointer; text-align:center;">
-              ${im.thumb_url
-                ? `<img src="${esc(im.thumb_url)}" style="width:100%; height:64px; object-fit:cover; border-radius:5px; border:1px solid #d2d0c4;">`
-                : `<div style="height:64px; border-radius:5px; background:#e6e4da; display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--muted-3);">no preview</div>`}
-              <div class="mono" style="font-size:9px; color:var(--muted-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                <input type="checkbox" data-name="${esc(im.name)}" checked style="vertical-align:middle;"> ${esc(im.name)}
-              </div>
-            </label>`).join("")}
-        </div>`;
-      holder.dataset.loaded = "1";
-      const update = () => {
-        const n = holder.querySelectorAll("[data-name]:checked").length;
-        holder.querySelector("[data-count]").textContent = `${n} selected`;
-        holder.querySelector("[data-run]").disabled = n === 0;
-      };
-      holder.querySelector("[data-all]").addEventListener("change", e => {
-        holder.querySelectorAll("[data-name]").forEach(cb => cb.checked = e.target.checked);
-        update();
-      });
-      holder.addEventListener("change", update);
-      update();
-      holder.querySelector("[data-run]").addEventListener("click", async e => {
-        const names = [...holder.querySelectorAll("[data-name]:checked")].map(cb => cb.dataset.name);
-        await queueDetection(e.target, sess, names);
-        e.target.textContent = "Detect selected";
-      });
-    } catch (e) {
-      holder.innerHTML = `<div class="empty" style="padding:10px;">${esc(e.message)}</div>`;
-      holder.dataset.loaded = "";
-    }
+      </label>`).join("");
+    pmUpdateCount();
+  } catch (e) {
+    document.getElementById("pm-sub").textContent = e.message;
   }
 }
+
+function closePicker() {
+  document.getElementById("picker-modal").style.display = "none";
+  document.getElementById("pm-grid").innerHTML = "";  // stop pending lazy loads
+  pmSession = null;
+}
+
+document.getElementById("pm-close").addEventListener("click", closePicker);
+document.getElementById("picker-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("picker-modal")) closePicker();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && pmSession) closePicker(); });
+document.getElementById("pm-grid").addEventListener("change", pmUpdateCount);
+document.getElementById("pm-all").addEventListener("change", e => {
+  document.querySelectorAll("#pm-grid [data-name]").forEach(cb => cb.checked = e.target.checked);
+  pmUpdateCount();
+});
+document.getElementById("pm-run").addEventListener("click", async e => {
+  const names = [...document.querySelectorAll("#pm-grid [data-name]:checked")].map(cb => cb.dataset.name);
+  await queueDetection(e.target, pmSession, names);
+  e.target.textContent = "Detect selected";
+  closePicker();
+});
 
 function drawSessions(src) {
   const box = document.getElementById("src-sessions");
@@ -264,12 +288,12 @@ function drawSessions(src) {
                 <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:2px;">${esc(s.start)}–${esc(s.end)} · ${s.count} image${s.count === 1 ? "" : "s"}</div>
               </div>
               <div style="display:flex; justify-content:flex-end; gap:6px;">
-                <button class="btn-quiet" style="padding:5px 10px; font-size:12px;" data-pick="${esc(s.id)}">Select images</button>
+                <button class="btn-quiet" style="padding:5px 10px; font-size:12px;" data-pick="${esc(s.id)}"
+                        data-title="${esc(day)} · ${esc(s.part)} · ${esc(s.start)}–${esc(s.end)}">Select images</button>
                 <button class="btn btn-outline" style="padding:5px 12px; font-size:12px;" data-session="${esc(s.id)}">Detect all</button>
               </div>
             </div>
           </div>
-          <div data-picker="${esc(s.id)}" style="display:none; margin-top:8px; border-top:1px solid var(--line);"></div>
         </div>`;
     }
     html += "</div></details>";
@@ -281,8 +305,7 @@ function drawSessions(src) {
     btn.textContent = "Detect all";
   }));
   box.querySelectorAll("[data-pick]").forEach(btn => btn.addEventListener("click", () =>
-    togglePicker(btn.dataset.pick,
-                 box.querySelector(`[data-picker="${btn.dataset.pick}"]`), btn)));
+    openPicker(btn.dataset.pick, btn.dataset.title)));
 }
 
 async function loadSource() {
