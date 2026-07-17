@@ -142,24 +142,62 @@ def _fmt_counts(counts: dict) -> str:
 
 
 def build_summary_text(batch: BatchResult) -> str:
-    """Compact detection summary fed to the LLM for analysis/recommendations."""
+    """Structured survey facts fed to the LLM.
+
+    The analysis can only be as professional as the data it is grounded in, so
+    this includes flight metadata, spatial extent, density and confidence
+    statistics, review status, and a ranked hotspot list — not just totals.
+    """
     s = batch.stats
     bi = batch.batch_info
+    reviewed = bool(bi.get("review"))
+
+    camera = next((im.camera for im in batch.images if im.camera), None)
+    capture = next((im.timestamp for im in batch.images if im.timestamp), None)
+    gps_pts = [im.gps for im in batch.images if im.gps]
+    alts = [im.altitude for im in batch.images if im.altitude is not None]
+
     lines = [
-        f"Survey batch: {bi.get('batch_label', 'n/a')} (captured/processed {bi.get('generated_at', '')}).",
-        f"Images processed: {s.get('images_processed', 0)}; flagged with hazards: {s.get('flagged_images', 0)}.",
-        f"Total detections: {s.get('total_detections', 0)} by type {s.get('detections_by_type', {})}.",
-        f"Images with dead trees: {s.get('images_with_deadtree', 0)}, "
-        f"flame: {s.get('images_with_flame', 0)}, smoke: {s.get('images_with_smoke', 0)}.",
-        f"Images with GPS: {s.get('images_with_gps', 0)}.",
-        "",
-        "Per-image:",
+        "=== FLIGHT ===",
+        f"Batch: {bi.get('batch_label', 'n/a')}; processed {bi.get('generated_at', '')}.",
+        f"Aircraft/camera: {camera or 'unknown'}; first capture time: {capture or 'unknown'}.",
+        f"Images: {s.get('images_processed', 0)} ({s.get('images_with_gps', 0)} GPS-tagged); "
+        f"altitude range: {f'{min(alts):.0f}-{max(alts):.0f} m' if alts else 'unknown'}.",
     ]
-    for im in batch.images[:30]:
-        if not im.detections:
-            continue
+    if gps_pts:
+        lat0, lat1 = min(p[0] for p in gps_pts), max(p[0] for p in gps_pts)
+        lon0, lon1 = min(p[1] for p in gps_pts), max(p[1] for p in gps_pts)
+        ext_ns = (lat1 - lat0) * 111_320
+        ext_ew = (lon1 - lon0) * 111_320 * 0.63  # cos(51°) — good enough for Alberta
+        lines.append(f"Surveyed extent: ~{ext_ns:.0f} m N-S x {ext_ew:.0f} m E-W "
+                     f"(bbox {lat0:.5f},{lon0:.5f} to {lat1:.5f},{lon1:.5f}).")
+
+    n_img = max(1, s.get("images_processed", 0))
+    counts = s.get("detections_by_type", {})
+    lines += [
+        "",
+        "=== DETECTIONS ===",
+        f"Status: {'REVIEWER-CONFIRMED boxes (post-review)' if reviewed else 'UNREVIEWED AI proposals'}.",
+        f"Totals: {s.get('total_detections', 0)} across {s.get('flagged_images', 0)} flagged images: "
+        + (", ".join(f"{v} {k}" for k, v in counts.items()) or "none") + ".",
+        f"Dead-tree density: mean {counts.get('Dead Tree', 0) / n_img:.1f} per image.",
+        "NOTE: consecutive drone photos overlap, so the same tree can be counted in several images "
+        "- treat totals as indicative, not absolute stem counts.",
+    ]
+    if not reviewed:
+        scores = [d.score for im in batch.images for d in im.detections]
+        if scores:
+            lines.append(f"Model confidence: mean {sum(scores) / len(scores):.2f}, "
+                         f"max {max(scores):.2f} (n={len(scores)}).")
+
+    hotspots = sorted((im for im in batch.images if im.detections),
+                      key=lambda im: len(im.detections), reverse=True)
+    lines += ["", "=== HOTSPOTS (ranked by detections per image) ==="]
+    for im in hotspots[:15]:
         gps = f"{im.gps[0]:.5f}, {im.gps[1]:.5f}" if im.gps else "no GPS"
-        lines.append(f"- {im.name}: {_counts_by_type(im)} at GPS {gps} (alt {im.altitude} m).")
+        lines.append(f"- {im.name}: {_counts_by_type(im)} @ {gps}")
+    if len(hotspots) > 15:
+        lines.append(f"... and {len(hotspots) - 15} more flagged images.")
     return "\n".join(lines)
 
 
@@ -325,11 +363,22 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path) -> l
     story.append(Paragraph("AI Analysis & Recommendations", _H2))
     body = ai_text or ("[Automated AI analysis unavailable — LM Studio was not reachable. "
                        "Start the local LM Studio server and load the model to include analysis.]")
+    import re as _re
+
     for para in body.split("\n\n"):
         para = para.strip()
-        if para:
-            story.append(Paragraph(para.replace("\n", "<br/>"), _BODY))
-            story.append(Spacer(1, 0.08 * inch))
+        if not para:
+            continue
+        # Render '## Heading' lines as section headers, light markdown-bold inline.
+        first, *rest = para.split("\n")
+        if first.lstrip().startswith("#"):
+            story.append(Paragraph(first.lstrip("# ").strip(), _H2))
+            para = "\n".join(rest).strip()
+            if not para:
+                continue
+        para = _re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", para)
+        story.append(Paragraph(para.replace("\n", "<br/>"), _BODY))
+        story.append(Spacer(1, 0.08 * inch))
     return story
 
 

@@ -29,7 +29,9 @@ def _sample_batch() -> BatchResult:
 
 def test_build_summary_text_mentions_key_facts():
     txt = build_summary_text(_sample_batch())
-    assert "Total detections" in txt and "Dead Tree" in txt and "51.11" in txt
+    assert "Dead Tree" in txt and "51.11" in txt
+    assert "HOTSPOTS" in txt and "UNREVIEWED" in txt  # structure + review status
+    assert "2025:05:02" in txt  # capture time from EXIF, not just processing date
 
 
 def test_build_report_writes_pdf(tmp_path):

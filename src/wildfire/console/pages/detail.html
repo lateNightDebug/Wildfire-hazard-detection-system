@@ -472,7 +472,7 @@ function drawSummary() {
       </div>`;
   }
   rows += DETAIL.reviewed
-    ? `<div style="font-size:11px; color:var(--green-2); font-weight:600;">✓ Human-reviewed — counts are the confirmed boxes (labels.json, feeds the next training round)</div>`
+    ? `<div style="font-size:11px; color:var(--green-2); font-weight:600;">✓ Reviewed — counts are the confirmed boxes (labels.json, feeds the next training round)</div>`
     : `<div style="font-size:11px; color:var(--muted-3);">Unreviewed AI proposals — click “Review boxes” to confirm them.</div>`;
   document.getElementById("summary-rows").innerHTML = rows;
 }
@@ -499,7 +499,7 @@ function draw() {
     `${DETAIL.images} image${DETAIL.images === 1 ? "" : "s"} · ${countsLine(DETAIL.detections_by_type)}`;
   const chips = [`<span class="chip mono">${esc(DETAIL.id)}</span>`];
   if (DETAIL.drone) chips.push(`<span class="chip">Drone: ${esc(DETAIL.drone)}</span>`);
-  if (DETAIL.reviewed) chips.push('<span class="chip" style="color:var(--green); border-color:var(--green-line);">Human-reviewed</span>');
+  if (DETAIL.reviewed) chips.push('<span class="chip" style="color:var(--green); border-color:var(--green-line);">Reviewed</span>');
   const sev = DETAIL.severity || "none";
   chips.push(`<span class="badge ${sev}" style="font-size:11px; padding:3px 9px;">${sev === "none" ? "NO DETECTIONS" : SEV[sev].label.toUpperCase() + " SEVERITY"}</span>`);
   document.getElementById("d-chips").innerHTML = chips.join("");
