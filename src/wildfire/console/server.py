@@ -580,7 +580,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ai_text, _ = generate_analysis(build_summary_text(batch), settings.lmstudio_url, model)
 
         pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text,
-                           max_image_pages=settings.report_max_image_pages)
+                           max_image_pages=settings.report_max_image_pages,
+                           map_dir=settings._resolve(settings.map_tiles_dir))
         note = "" if reviewed else "Generated from UNREVIEWED proposals — confirm the boxes first for a reviewed report."
         if not model:
             note = (note + " LM Studio offline — AI analysis omitted.").strip()

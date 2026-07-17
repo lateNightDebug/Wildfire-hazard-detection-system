@@ -120,7 +120,9 @@ def generate_report_ui(ann_value, cur, ann, batch, progress=gr.Progress()):
         ai_text, _ = generate_analysis(build_summary_text(confirmed), settings.lmstudio_url, model)
 
     progress(0.85, desc="Writing PDF...")
-    pdf = build_report(confirmed, timestamped_report_path(out_dir), ai_text=ai_text)
+    pdf = build_report(confirmed, timestamped_report_path(out_dir), ai_text=ai_text,
+                       max_image_pages=settings.report_max_image_pages,
+                       map_dir=settings._resolve(settings.map_tiles_dir))
     n = confirmed.stats["total_detections"]
     note = "" if model else "  (LM Studio offline — AI analysis omitted.)"
     return str(pdf), (f"Report built with {n} confirmed detection(s). "

@@ -299,11 +299,75 @@ def _image_page(im: ImageResult, assets: Path) -> list:
     return story
 
 
-def _pin_map_png(batch: BatchResult, assets: Path) -> Optional[Path]:
-    """Offline GPS pin plot for the summary page (relative positions, not to scale).
+MAP_W, MAP_H = 900, 540
 
-    One pin per GPS-tagged image, colored by what it contains: flame red,
-    smoke orange, dead tree yellow, clean green.
+
+def _merc_px(lat: float, lon: float, zoom: int) -> tuple[float, float]:
+    """WGS84 -> global web-mercator pixel coordinates at `zoom` (256px tiles)."""
+    import math
+
+    scale = 256 * (2 ** zoom)
+    x = (lon + 180.0) / 360.0 * scale
+    y = (1.0 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2.0 * scale
+    return x, y
+
+
+def _satellite_backdrop(pts: list, map_dir: Optional[Path]):
+    """Stitch cached offline tiles into a real satellite backdrop for the pin
+    bbox. Returns (PIL image WxH, latlon->canvas transform) or None when the
+    area isn't cached — the plain light canvas is the fallback, not the goal.
+    """
+    if not map_dir or not Path(map_dir).is_dir():
+        return None
+    import math
+
+    from PIL import Image as PILImage
+
+    map_dir = Path(map_dir)
+    lats = [p[0] for p in pts]
+    lons = [p[1] for p in pts]
+    for zoom in range(17, 5, -1):  # highest cached detail wins
+        xs, ys = zip(*(_merc_px(lat, lon, zoom) for lat, lon in zip(lats, lons)))
+        cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+        # viewport in mercator px: pins + 35% margin, at least 5 tiles wide,
+        # locked to the canvas aspect ratio
+        half_w = max((max(xs) - min(xs)) * 0.675, 640.0)
+        half_h = max((max(ys) - min(ys)) * 0.675, half_w * MAP_H / MAP_W)
+        half_w = max(half_w, half_h * MAP_W / MAP_H)
+        half_h = half_w * MAP_H / MAP_W
+        x0, x1 = cx - half_w, cx + half_w
+        y0, y1 = cy - half_h, cy + half_h
+        tx0, tx1 = int(x0 // 256), int(x1 // 256)
+        ty0, ty1 = int(y0 // 256), int(y1 // 256)
+        n_tiles = (tx1 - tx0 + 1) * (ty1 - ty0 + 1)
+        if n_tiles > 48:
+            continue
+        needed = [(tx, ty) for tx in range(tx0, tx1 + 1) for ty in range(ty0, ty1 + 1)]
+        if not all((map_dir / str(zoom) / str(tx) / f"{ty}.jpg").exists() for tx, ty in needed):
+            continue
+
+        mosaic = PILImage.new("RGB", ((tx1 - tx0 + 1) * 256, (ty1 - ty0 + 1) * 256), (24, 26, 24))
+        for tx, ty in needed:
+            with PILImage.open(map_dir / str(zoom) / str(tx) / f"{ty}.jpg") as tile:
+                mosaic.paste(tile.convert("RGB"), ((tx - tx0) * 256, (ty - ty0) * 256))
+        crop = mosaic.crop((int(x0 - tx0 * 256), int(y0 - ty0 * 256),
+                            int(x1 - tx0 * 256), int(y1 - ty0 * 256)))
+        img = crop.resize((MAP_W, MAP_H), PILImage.LANCZOS)
+
+        def to_canvas(lat: float, lon: float, _z=zoom, _x0=x0, _y0=y0,
+                      _sx=MAP_W / (x1 - x0), _sy=MAP_H / (y1 - y0)):
+            gx, gy = _merc_px(lat, lon, _z)
+            return (gx - _x0) * _sx, (gy - _y0) * _sy
+
+        return img, to_canvas, zoom
+    return None
+
+
+def _pin_map_png(batch: BatchResult, assets: Path,
+                 map_dir: Optional[Path] = None) -> Optional[Path]:
+    """Hazard map for the summary page: REAL offline satellite tiles when the
+    area is cached (same imagery as the console map), else a light schematic.
+    One pin per GPS-tagged image: flame red, smoke orange, dead tree yellow.
     """
     from PIL import Image as PILImage
     from PIL import ImageDraw
@@ -320,36 +384,52 @@ def _pin_map_png(batch: BatchResult, assets: Path) -> Optional[Path]:
     if not pts:
         return None
 
-    # Print-friendly light theme - the console's dark map reads as a black
-    # rectangle on paper.
-    W, H = 900, 540
-    img = PILImage.new("RGB", (W, H), (255, 255, 255))
-    d = ImageDraw.Draw(img)
-    for x in range(0, W, 64):
-        d.line([(x, 0), (x, H)], fill=(228, 228, 220))
-    for y in range(0, H, 64):
-        d.line([(0, y), (W, y)], fill=(228, 228, 220))
-    d.rectangle([0, 0, W - 1, H - 1], outline=(180, 180, 172))
+    W, H = MAP_W, MAP_H
+    backdrop = _satellite_backdrop([(lat, lon) for lat, lon, _ in pts], map_dir)
+    if backdrop:
+        img, to_canvas, zoom = backdrop
+        d = ImageDraw.Draw(img)
+        title = f"Offline satellite imagery (zoom {zoom}) - north up"
+        attribution = "Imagery (c) Esri - Maxar, Earthstar Geographics"
+    else:
+        img = PILImage.new("RGB", (W, H), (255, 255, 255))
+        d = ImageDraw.Draw(img)
+        for x in range(0, W, 64):
+            d.line([(x, 0), (x, H)], fill=(228, 228, 220))
+        for y in range(0, H, 64):
+            d.line([(0, y), (W, y)], fill=(228, 228, 220))
+        lats = [p[0] for p in pts]
+        lons = [p[1] for p in pts]
+        lat_span = max(max(lats) - min(lats), 1e-4)
+        lon_span = max(max(lons) - min(lons), 1e-4)
 
-    lats = [p[0] for p in pts]
-    lons = [p[1] for p in pts]
-    lat_span = max(max(lats) - min(lats), 1e-4)
-    lon_span = max(max(lons) - min(lons), 1e-4)
-    pad = 0.12
+        def to_canvas(lat, lon):
+            return ((0.12 + (lon - min(lons)) / lon_span * 0.76) * W,
+                    (0.12 + (max(lats) - lat) / lat_span * 0.76) * H)
+
+        title = "Relative GPS positions - north up - not to scale (no offline tiles cached)"
+        attribution = ""
+
     for lat, lon, color in pts:
-        px = (pad + (lon - min(lons)) / lon_span * (1 - 2 * pad)) * W
-        py = (pad + (max(lats) - lat) / lat_span * (1 - 2 * pad)) * H  # north = up
+        px, py = to_canvas(lat, lon)
         d.ellipse([px - 7, py - 7, px + 7, py + 7], fill=color,
-                  outline=(70, 70, 64), width=2)
+                  outline=(255, 255, 255) if backdrop else (70, 70, 64), width=2)
 
+    # readable chrome over imagery: white boxes behind title + legend
+    d.rectangle([8, 6, 8 + 8 * len(title) // 1 + 16, 26], fill=(255, 255, 255))
+    d.text((16, 10), title, fill=(60, 60, 55))
     legend = [("Flame", (224, 85, 85)), ("Smoke", (240, 165, 0)),
               ("Dead tree", (255, 215, 0)), ("No detections", (58, 154, 58))]
+    d.rectangle([8, H - 34, 470, H - 8], fill=(255, 255, 255))
     x = 16
     for label, color in legend:
-        d.ellipse([x, H - 26, x + 12, H - 14], fill=color, outline=(70, 70, 64))
-        d.text((x + 18, H - 26), label, fill=(60, 60, 55))
-        x += 18 + 8 * len(label) + 24
-    d.text((16, 12), "Relative GPS positions - north up - not to scale", fill=(110, 110, 102))
+        d.ellipse([x, H - 27, x + 12, H - 15], fill=color, outline=(70, 70, 64))
+        d.text((x + 18, H - 27), label, fill=(60, 60, 55))
+        x += 18 + 7 * len(label) + 22
+    if attribution:
+        d.rectangle([W - 8 - 7 * len(attribution) - 12, H - 26, W - 6, H - 8],
+                    fill=(255, 255, 255))
+        d.text((W - 8 - 7 * len(attribution) - 6, H - 23), attribution, fill=(90, 90, 84))
 
     assets.mkdir(parents=True, exist_ok=True)
     dest = assets / "summary_map.png"
@@ -357,7 +437,8 @@ def _pin_map_png(batch: BatchResult, assets: Path) -> Optional[Path]:
     return dest
 
 
-def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path) -> list:
+def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path,
+                  map_dir: Optional[Path] = None) -> list:
     s = batch.stats
     rows = [["Metric", "Value"]] + [
         ["Images processed", s.get("images_processed", 0)],
@@ -380,7 +461,7 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path) -> l
         ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
     story = [Paragraph("Batch Summary", _H1), Spacer(1, 0.2 * inch), st, Spacer(1, 0.3 * inch)]
-    map_png = _pin_map_png(batch, assets)
+    map_png = _pin_map_png(batch, assets, map_dir=map_dir)
     if map_png:
         story += [Paragraph("Hazard Locations", _H2),
                   _fit_image(str(map_png), 6.6 * inch, 3.9 * inch),
@@ -428,6 +509,7 @@ def build_report(
     out_path: str | Path,
     ai_text: Optional[str] = None,
     max_image_pages: int = 30,
+    map_dir: Optional[Path] = None,  # offline tile cache for a real map backdrop
 ) -> Path:
     """Build the PDF field report at `out_path`. Returns the path."""
     out_path = Path(out_path)
@@ -447,7 +529,7 @@ def build_report(
         story.insert(-1, Paragraph(cap_note, _SMALL))  # before the cover's PageBreak
     for im in picked:
         story += _image_page(im, assets)
-    story += _summary_page(batch, ai_text, assets)
+    story += _summary_page(batch, ai_text, assets, map_dir=map_dir)
 
     doc.build(story, onFirstPage=_banner, onLaterPages=_banner, canvasmaker=_NumberedCanvas)
     return out_path
