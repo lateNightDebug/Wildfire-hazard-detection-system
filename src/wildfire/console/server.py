@@ -63,6 +63,11 @@ class LabelsBody(BaseModel):
     labels: dict[str, list[dict]]
 
 
+class ImageReviewBody(BaseModel):
+    name: str          # image within the run
+    reviewed: bool     # True = operator confirms this image, False = undo
+
+
 class SettingsBody(BaseModel):
     values: dict = {}  # whitelisted scalar settings
     model_enabled: dict[str, bool] = {}  # model_sources key -> enabled
@@ -556,6 +561,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _confirmed_batch(batch, labels, run_dir)  # refresh confirmed imagery
         detail = data.scan_detail(Path(run_id).name, settings)
         return {"saved": len(records), "detail": detail}
+
+    @app.post("/api/scans/{run_id}/image-reviewed")
+    def api_mark_image_reviewed(run_id: str, body: ImageReviewBody):
+        """Toggle the operator's per-image 'reviewed' check (persisted)."""
+        settings: Settings = app.state.settings
+        run_dir = settings.output_path / Path(run_id).name
+        batch_file = run_dir / "batch.json"
+        if not batch_file.exists():
+            raise HTTPException(404, f"run '{run_id}' not found")
+        rev_file = run_dir / "reviewed_images.json"
+        names = set((data._load_json(rev_file) or {}).get("reviewed", []))
+        valid = {im.get("name") for im in
+                 json.loads(batch_file.read_text(encoding="utf-8")).get("images", [])}
+        if body.name not in valid:
+            raise HTTPException(400, f"unknown image '{body.name}' in this run")
+        names.add(body.name) if body.reviewed else names.discard(body.name)
+        rev_file.write_text(json.dumps({"reviewed": sorted(names)}, indent=2), encoding="utf-8")
+        return {"name": body.name, "reviewed": body.reviewed,
+                "reviewed_image_count": len(names), "total": len(valid)}
 
     @app.post("/api/scans/{run_id}/report")
     def api_generate_report(run_id: str):

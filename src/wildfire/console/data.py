@@ -188,6 +188,10 @@ def scan_detail(run_id: str, settings: Settings) -> Optional[dict]:
                     {"xyxy": rec["xyxy"],
                      "class": rec.get("class") or rec.get("proposed_class") or "Dead Tree"})
 
+    # Per-image "the operator eyeballed this one" flags — an explicit user
+    # action, distinct from having saved any boxes.
+    reviewed_names = set((_load_json(run_dir / "reviewed_images.json") or {}).get("reviewed", []))
+
     scores = []
     images = []
     for im in batch.get("images") or []:
@@ -203,7 +207,8 @@ def scan_detail(run_id: str, settings: Settings) -> Optional[dict]:
             "gps": im.get("gps"),
             "timestamp": im.get("timestamp"),
             "detections": dets,
-            "confirmed": confirmed_by_path.get(str(im.get("path"))),  # None = not reviewed
+            "confirmed": confirmed_by_path.get(str(im.get("path"))),  # None = boxes not saved
+            "reviewed_by_user": im.get("name") in reviewed_names,  # explicit per-image check
             "counts": _count_types(dets),
             "original_url": _rel_url(im.get("orig_display_path"), root),
             "annotated_url": _rel_url(im.get("annotated_path"), root),
@@ -220,6 +225,7 @@ def scan_detail(run_id: str, settings: Settings) -> Optional[dict]:
         # The aircraft that shot the flight (EXIF), NOT the computer that processed it.
         "drone": next((im.get("camera") for im in batch_images if im.get("camera")), None),
         "images_detail": images,
+        "reviewed_image_count": sum(1 for i in images if i["reviewed_by_user"]),
         "avg_confidence": round(sum(scores) / len(scores), 3) if scores else None,
         "peak_confidence": round(max(scores), 3) if scores else None,
     })

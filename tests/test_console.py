@@ -200,6 +200,39 @@ def test_save_labels_endpoint(tmp_path):
     assert r.status_code == 400
 
 
+def test_image_reviewed_toggle(tmp_path):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from src.wildfire.console.server import create_app
+
+    settings = _settings(tmp_path)
+    _make_run(tmp_path, "console_20260710_120000", dead=1)
+    client = TestClient(create_app(settings))
+    rid = "console_20260710_120000"
+
+    # nothing reviewed until the operator explicitly acts
+    d = client.get(f"/api/scans/{rid}").json()
+    assert d["reviewed_image_count"] == 0
+    assert d["images_detail"][0]["reviewed_by_user"] is False
+
+    r = client.post(f"/api/scans/{rid}/image-reviewed", json={"name": "img.jpg", "reviewed": True})
+    assert r.status_code == 200 and r.json()["reviewed_image_count"] == 1
+    d = client.get(f"/api/scans/{rid}").json()
+    assert d["images_detail"][0]["reviewed_by_user"] is True and d["reviewed_image_count"] == 1
+    # persisted to a sidecar file, not labels.json
+    assert (tmp_path / "outputs" / rid / "reviewed_images.json").exists()
+
+    # undo
+    client.post(f"/api/scans/{rid}/image-reviewed", json={"name": "img.jpg", "reviewed": False})
+    assert client.get(f"/api/scans/{rid}").json()["reviewed_image_count"] == 0
+
+    # unknown image -> 400
+    assert client.post(f"/api/scans/{rid}/image-reviewed",
+                       json={"name": "ghost.jpg", "reviewed": True}).status_code == 400
+
+
 def test_reports_and_settings_api(tmp_path):
     pytest.importorskip("fastapi")
     pytest.importorskip("httpx")

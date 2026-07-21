@@ -51,8 +51,12 @@
     <div style="display:flex; flex-direction:column; gap:16px; min-width:0;">
       <div class="card" style="overflow:hidden;">
         <div class="card-head" style="padding:13px 16px;">
-          <span class="card-title" id="viewer-title">Detection Preview</span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="card-title" id="viewer-title">Detection Preview</span>
+            <span class="mono" style="font-size:11px; color:var(--muted-3);" id="review-progress"></span>
+          </div>
           <div style="display:flex; align-items:center; gap:12px;">
+            <button id="mark-reviewed" class="btn-quiet" style="padding:5px 11px; font-size:12px;">&#10003; Mark reviewed</button>
             <div class="view-toggle" id="view-toggle">
               <button data-v="annotated" class="on">Annotated</button>
               <button data-v="original">Original</button>
@@ -253,8 +257,8 @@ function drawPreview() {
     // Server-side small thumbs + lazy loading: a 100-image strip must not pull
     // 100 full-resolution annotated JPEGs into the page.
     const src = `/api/run-thumb/${encodeURIComponent(RUN_ID)}/${encodeURIComponent(t.name)}`;
-    // Reviewed run -> every image is confirmed, mark each thumbnail with a check.
-    const check = DETAIL.reviewed ? '<span class="thumb-check">&#10003;</span>' : "";
+    // Check only images the operator explicitly marked reviewed (not auto).
+    const check = t.reviewed_by_user ? '<span class="thumb-check">&#10003;</span>' : "";
     return `<div class="thumb-wrap ${i === curImage ? "sel" : ""}" data-i="${i}" title="${esc(t.name)}">
               <img class="thumb ${kind ? "k-" + kind : ""}" loading="lazy" src="${src}">${check}
             </div>`;
@@ -266,7 +270,45 @@ function drawPreview() {
     }));
   applyZoom();  // innerHTML replaced the stage — restore the current transform
   if (EDIT) wireOverlay();
+  drawReviewControls();
 }
+
+/* Per-image review check — an explicit operator action, persisted server-side. */
+function drawReviewControls() {
+  const ims = DETAIL.images_detail;
+  const btn = document.getElementById("mark-reviewed");
+  const done = ims.filter(i => i.reviewed_by_user).length;
+  document.getElementById("review-progress").textContent =
+    ims.length ? `reviewed ${done} / ${ims.length}` : "";
+  if (!ims.length) { btn.style.display = "none"; return; }
+  btn.style.display = "";
+  const on = !!ims[curImage].reviewed_by_user;
+  btn.innerHTML = on ? "&#10003; Reviewed &middot; undo" : "&#10003; Mark reviewed";
+  btn.style.background = on ? "var(--green-bg)" : "";
+  btn.style.color = on ? "var(--green)" : "";
+  btn.style.borderColor = on ? "var(--green-line)" : "";
+}
+
+document.getElementById("mark-reviewed").addEventListener("click", async () => {
+  const ims = DETAIL.images_detail;
+  if (!ims.length) return;
+  const im = ims[curImage];
+  const next = !im.reviewed_by_user;
+  const btn = document.getElementById("mark-reviewed");
+  btn.disabled = true;
+  try {
+    await api(`/api/scans/${encodeURIComponent(RUN_ID)}/image-reviewed`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: im.name, reviewed: next }),
+    });
+    im.reviewed_by_user = next;   // local update — no full reload
+    drawPreview();
+  } catch (e) {
+    toast("Could not update review state: " + e.message, 6000);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 /* ------------------------------------------------------------- editor wiring */
 function svgPoint(svg, ev) {
