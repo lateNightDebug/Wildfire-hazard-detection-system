@@ -223,13 +223,37 @@ def build_summary_text(batch: BatchResult) -> str:
     return "\n".join(lines)
 
 
+def _review_badge(reviewed: bool):
+    """A colored cover banner stating whether a human confirmed the detections."""
+    if reviewed:
+        text = "REVIEWED - every detection in this batch has been human-verified"
+        fg, bg, line = "#2D5A2D", "#e3efe3", "#3A9A3A"
+    else:
+        text = "UNREVIEWED - AI proposals, not yet confirmed by a reviewer"
+        fg, bg, line = "#8a6d1a", "#f7efd6", "#d9b64a"
+    badge = Table([[text]], colWidths=[8.2 * inch])
+    badge.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(bg)),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor(fg)),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 11),
+        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor(line)),
+        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+    ]))
+    return badge
+
+
 def _cover(batch: BatchResult) -> list:
     s = batch.stats
     bi = batch.batch_info
+    reviewed = bool(bi.get("review"))
     story = [
         Spacer(1, 0.6 * inch),
         Paragraph("Wildfire Hazardous Tree Mapping", _H1),
         Paragraph("Drone Forest Hazard Detection - Field Report", _H2),
+        Spacer(1, 0.25 * inch),
+        _review_badge(reviewed),
         Spacer(1, 0.3 * inch),
     ]
     info = [

@@ -46,8 +46,9 @@
   </div>
 
   <div style="display:grid; grid-template-columns:1fr 360px; gap:16px;">
-    <!-- left: viewer / editor -->
-    <div style="display:flex; flex-direction:column; gap:16px;">
+    <!-- left: viewer / editor. min-width:0 lets the column shrink so the
+         thumbnail strip scrolls inside its card instead of stretching the page. -->
+    <div style="display:flex; flex-direction:column; gap:16px; min-width:0;">
       <div class="card" style="overflow:hidden;">
         <div class="card-head" style="padding:13px 16px;">
           <span class="card-title" id="viewer-title">Detection Preview</span>
@@ -182,10 +183,12 @@ previewEl.addEventListener("pointermove", e => {
 previewEl.addEventListener("pointerup", () => { panning = null; });
 previewEl.addEventListener("dblclick", resetZoom);
 
-function imgSeverity(im) {
-  if ((im.counts || {})["Flame"]) return "high";
-  if ((im.counts || {})["Smoke"]) return "medium";
-  if (Object.values(im.counts || {}).reduce((a, b) => a + b, 0)) return "low";
+// Hazard TYPE of an image (for thumbnail border color) — same language as the
+// detection boxes and the map: flame > smoke > dead tree.
+function imgKind(im) {
+  if ((im.counts || {})["Flame"]) return "flame";
+  if ((im.counts || {})["Smoke"]) return "smoke";
+  if (Object.values(im.counts || {}).reduce((a, b) => a + b, 0)) return "deadtree";
   return null;
 }
 
@@ -246,12 +249,15 @@ function drawPreview() {
     : `<span class="mono" style="color:#cdd6c0; opacity:.5; font-size:12px;">${esc(im.error || "image unavailable")}</span>`;
   document.getElementById("preview-name").textContent = `${im.name} · ${curImage + 1} / ${ims.length}`;
   document.getElementById("thumbs").innerHTML = ims.map((t, i) => {
-    const sev = imgSeverity(t);
-    const cls = ["thumb", i === curImage ? "sel" : "", sev ? "b-" + sev : ""].join(" ");
-    // Server-side small thumbs + lazy loading: a 250-image strip must not pull
-    // 250 full-resolution annotated JPEGs into the page.
+    const kind = imgKind(t);
+    // Server-side small thumbs + lazy loading: a 100-image strip must not pull
+    // 100 full-resolution annotated JPEGs into the page.
     const src = `/api/run-thumb/${encodeURIComponent(RUN_ID)}/${encodeURIComponent(t.name)}`;
-    return `<img class="${cls}" loading="lazy" src="${src}" data-i="${i}" title="${esc(t.name)}">`;
+    // Reviewed run -> every image is confirmed, mark each thumbnail with a check.
+    const check = DETAIL.reviewed ? '<span class="thumb-check">&#10003;</span>' : "";
+    return `<div class="thumb-wrap ${i === curImage ? "sel" : ""}" data-i="${i}" title="${esc(t.name)}">
+              <img class="thumb ${kind ? "k-" + kind : ""}" loading="lazy" src="${src}">${check}
+            </div>`;
   }).join("");
   document.querySelectorAll("#thumbs [data-i]").forEach(el =>
     el.addEventListener("click", () => {
