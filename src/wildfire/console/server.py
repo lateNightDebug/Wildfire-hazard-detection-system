@@ -106,8 +106,14 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", Path(name or "upload").name)
 
 
-def _confirmed_batch(batch: BatchResult, labels: dict, out_dir: Path) -> BatchResult:
-    """Rebuild a batch from human-confirmed labels.json boxes (original coords)."""
+def _confirmed_batch(batch: BatchResult, labels: dict, out_dir: Path,
+                     force_render: bool = True) -> BatchResult:
+    """Rebuild a batch from human-confirmed labels.json boxes (original coords).
+
+    force_render=False reuses confirmed imagery that Save-review already wrote —
+    regenerating a report must NOT re-decode 100 full-res frames again (that
+    froze the app). Save-review keeps force_render=True so edits re-render.
+    """
     from ..annotate import draw_boxes, grid_density_map
     from ..imageio_utils import load_rgb_uint8
     from ..risk import batch_stats
@@ -124,19 +130,23 @@ def _confirmed_batch(batch: BatchResult, labels: dict, out_dir: Path) -> BatchRe
             cls = str(rec.get("class") or rec.get("proposed_class") or "Dead Tree")
             dets.append(Detection(cls_name=cls.lower().replace(" ", "_"), display=cls,
                                   score=1.0, xyxy=tuple(float(v) for v in rec["xyxy"])))
+        stem = Path(im.path).stem
+        annot_out = out_dir / "annotated" / f"{stem}_confirmed.jpg"
+        grid_out = out_dir / "gridmaps" / f"{stem}_confirmed.jpg"
         annotated_path, density_path = im.annotated_path, im.density_path
-        try:
-            src = im.path if Path(im.path).exists() else (im.orig_display_path or im.path)
-            bgr = cv2.cvtColor(load_rgb_uint8(src), cv2.COLOR_RGB2BGR)
-            stem = Path(im.path).stem
-            (out_dir / "annotated").mkdir(parents=True, exist_ok=True)
-            (out_dir / "gridmaps").mkdir(parents=True, exist_ok=True)
-            annotated_path = str(out_dir / "annotated" / f"{stem}_confirmed.jpg")
-            cv2.imwrite(annotated_path, draw_boxes(bgr, dets), [cv2.IMWRITE_JPEG_QUALITY, 88])
-            density_path = str(out_dir / "gridmaps" / f"{stem}_confirmed.jpg")
-            cv2.imwrite(density_path, grid_density_map(bgr, dets), [cv2.IMWRITE_JPEG_QUALITY, 88])
-        except Exception:
-            pass
+        if not force_render and annot_out.exists() and grid_out.exists():
+            annotated_path, density_path = str(annot_out), str(grid_out)  # reuse
+        else:
+            try:
+                src = im.path if Path(im.path).exists() else (im.orig_display_path or im.path)
+                bgr = cv2.cvtColor(load_rgb_uint8(src), cv2.COLOR_RGB2BGR)
+                annot_out.parent.mkdir(parents=True, exist_ok=True)
+                grid_out.parent.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(annot_out), draw_boxes(bgr, dets), [cv2.IMWRITE_JPEG_QUALITY, 88])
+                cv2.imwrite(str(grid_out), grid_density_map(bgr, dets), [cv2.IMWRITE_JPEG_QUALITY, 88])
+                annotated_path, density_path = str(annot_out), str(grid_out)
+            except Exception:
+                pass
         new_images.append(replace(im, detections=dets, flagged=bool(dets),
                                   annotated_path=annotated_path, density_path=density_path))
     info = dict(batch.batch_info)
@@ -153,6 +163,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings.ensure_dirs()
     app.state.source_cache = {}  # folder -> (signature, scan result)
     app.state.review_proc = None
+    app.state.report_jobs = {}  # run_id -> report generation status
 
     def _scan_cached(folder: str) -> dict:
         """Scan the mission folder, reusing the result while nothing changed."""
@@ -583,33 +594,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/scans/{run_id}/report")
     def api_generate_report(run_id: str):
+        """Start report generation in a BACKGROUND thread and return immediately.
+
+        Building a report for a 100-image flight (confirmed imagery + LLM + PDF)
+        took long enough to freeze the desktop WebView when done inside the
+        request. The UI polls /report/status instead.
+        """
+        import threading
+
         settings: Settings = app.state.settings
         run_dir = settings.output_path / Path(run_id).name
         batch_file = run_dir / "batch.json"
         if not batch_file.exists():
             raise HTTPException(404, f"run '{run_id}' has no batch.json")
-        from ..llm import generate_analysis, resolve_model_id
-        from ..report import build_report, build_summary_text, timestamped_report_path
+        cur = app.state.report_jobs.get(run_id)
+        if cur and cur.get("state") == "running":
+            return JSONResponse(cur, status_code=409)
+        job = {"state": "running", "stage": "starting"}
+        app.state.report_jobs[run_id] = job
 
-        batch = BatchResult.from_dict(json.loads(batch_file.read_text(encoding="utf-8")))
-        labels_file = run_dir / "labels.json"
-        reviewed = labels_file.exists()
-        if reviewed:
-            labels = json.loads(labels_file.read_text(encoding="utf-8"))
-            batch = _confirmed_batch(batch, labels, run_dir)
+        def work() -> None:
+            try:
+                from ..llm import generate_analysis, resolve_model_id
+                from ..report import build_report, build_summary_text, timestamped_report_path
 
-        ai_text = None
-        model, _ = resolve_model_id(settings.lmstudio_url, settings.lmstudio_model)
-        if model:
-            ai_text, _ = generate_analysis(build_summary_text(batch), settings.lmstudio_url, model)
+                batch = BatchResult.from_dict(json.loads(batch_file.read_text(encoding="utf-8")))
+                labels_file = run_dir / "labels.json"
+                reviewed = labels_file.exists()
+                if reviewed:
+                    job["stage"] = "confirming boxes"
+                    labels = json.loads(labels_file.read_text(encoding="utf-8"))
+                    batch = _confirmed_batch(batch, labels, run_dir, force_render=False)
+                job["stage"] = "AI analysis"
+                ai_text = None
+                model, _ = resolve_model_id(settings.lmstudio_url, settings.lmstudio_model)
+                if model:
+                    ai_text, _ = generate_analysis(build_summary_text(batch),
+                                                   settings.lmstudio_url, model)
+                job["stage"] = "building PDF"
+                pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text,
+                                   max_image_pages=settings.report_max_image_pages,
+                                   map_dir=settings._resolve(settings.map_tiles_dir))
+                note = "" if reviewed else "Generated from UNREVIEWED proposals - confirm the boxes first for a reviewed report."
+                if not model:
+                    note = (note + " LM Studio offline - AI analysis omitted.").strip()
+                job.update(state="done", report_url=data._rel_url(str(pdf), settings.output_path),
+                           reviewed=reviewed, note=note)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                job.update(state="error", error=f"{type(e).__name__}: {e}")
 
-        pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text,
-                           max_image_pages=settings.report_max_image_pages,
-                           map_dir=settings._resolve(settings.map_tiles_dir))
-        note = "" if reviewed else "Generated from UNREVIEWED proposals — confirm the boxes first for a reviewed report."
-        if not model:
-            note = (note + " LM Studio offline — AI analysis omitted.").strip()
-        return {"report_url": data._rel_url(str(pdf), settings.output_path),
-                "reviewed": reviewed, "note": note}
+        threading.Thread(target=work, name=f"report-{run_id}", daemon=True).start()
+        return JSONResponse({"state": "running"}, status_code=202)
+
+    @app.get("/api/scans/{run_id}/report/status")
+    def api_report_status(run_id: str):
+        return app.state.report_jobs.get(run_id) or {"state": "idle"}
 
     return app

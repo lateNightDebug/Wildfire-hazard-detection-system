@@ -568,20 +568,34 @@ document.getElementById("view-toggle").addEventListener("click", e => {
   drawPreview();
 });
 
+const REPORT_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 15h6M9 11h2"></path></svg>';
+
 document.getElementById("d-report").addEventListener("click", async () => {
   const btn = document.getElementById("d-report");
-  btn.disabled = true; btn.textContent = "Generating…";
+  btn.disabled = true; btn.textContent = "Starting…";
   try {
-    const res = await api(`/api/scans/${encodeURIComponent(RUN_ID)}/report`, { method: "POST" });
-    if (res.note) toast(res.note, 8000);
-    DETAIL.report_url = res.report_url;
+    // Report runs in a background thread; poll status so a big flight cannot
+    // freeze the window (100-image reports used to hang the app).
+    await api(`/api/scans/${encodeURIComponent(RUN_ID)}/report`, { method: "POST" });
+    const done = await new Promise((resolve, reject) => {
+      const timer = setInterval(async () => {
+        let s;
+        try { s = await api(`/api/scans/${encodeURIComponent(RUN_ID)}/report/status`); }
+        catch (e) { return; }  // transient, keep polling
+        if (s.stage) btn.textContent = s.stage + "…";
+        if (s.state === "done") { clearInterval(timer); resolve(s); }
+        if (s.state === "error") { clearInterval(timer); reject(new Error(s.error || "failed")); }
+      }, 1200);
+    });
+    if (done.note) toast(done.note, 8000);
+    DETAIL.report_url = done.report_url;
     drawSession();
-    if (res.report_url) window.open(res.report_url, "_blank");
+    if (done.report_url) window.open(done.report_url, "_blank");
   } catch (e) {
     toast("Report failed: " + e.message, 8000);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 15h6M9 11h2"></path></svg> Generate Report';
+    btn.innerHTML = REPORT_ICON + " Generate Report";
   }
 });
 

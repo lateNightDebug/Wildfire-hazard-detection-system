@@ -226,7 +226,7 @@ def build_summary_text(batch: BatchResult) -> str:
 def _review_badge(reviewed: bool):
     """A colored cover banner stating whether a human confirmed the detections."""
     if reviewed:
-        text = "REVIEWED - every detection in this batch has been human-verified"
+        text = "REVIEWED - every detection in this batch has been verified"
         fg, bg, line = "#2D5A2D", "#e3efe3", "#3A9A3A"
     else:
         text = "UNREVIEWED - AI proposals, not yet confirmed by a reviewer"
