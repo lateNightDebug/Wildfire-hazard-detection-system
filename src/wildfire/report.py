@@ -56,6 +56,34 @@ _SMALL = ParagraphStyle("small", parent=_styles["Normal"], fontSize=8, textColor
 HEADER = colors.HexColor("#2c3e50")
 ACCENT = colors.HexColor("#c0392b")
 
+# Branding read from the branding/ folder (same as the console) so the report
+# header/title carry the deployment's logo + name. Set by build_report().
+_BRAND: dict = {"name": "Wildfire Hazardous Tree Mapping", "logo": None}
+
+
+def _load_branding(branding_dir) -> dict:
+    """Read branding/brand.json + auto-detect logo.* for the PDF header."""
+    import json
+    from pathlib import Path as _P
+
+    brand = {"name": "Wildfire Hazardous Tree Mapping", "logo": None}
+    if not branding_dir:
+        return brand
+    bdir = _P(branding_dir)
+    bj = bdir / "brand.json"
+    if bj.exists():
+        try:
+            cfg = json.loads(bj.read_text(encoding="utf-8"))
+            brand["name"] = cfg.get("app_name") or brand["name"]
+        except Exception:
+            pass
+    for ext in ("png", "jpg", "jpeg", "svg", "webp"):
+        cand = bdir / f"logo.{ext}"
+        if cand.exists() and ext != "svg":  # reportlab can't embed SVG directly
+            brand["logo"] = str(cand)
+            break
+    return brand
+
 
 class _NumberedCanvas(canvas_mod.Canvas):
     """Adds 'Page X of Y' and a footer banner (two-pass over saved pages)."""
@@ -89,9 +117,22 @@ def _banner(canvas, doc):
     canvas.saveState()
     canvas.setFillColor(HEADER)
     canvas.rect(0, h - 0.45 * inch, w, 0.45 * inch, fill=1, stroke=0)
+    x = 0.6 * inch
+    logo = _BRAND.get("logo")
+    if logo:
+        try:
+            ir = ImageReader(logo)
+            iw, ih = ir.getSize()
+            lh = 0.3 * inch  # fit logo height into the banner
+            lw = lh * iw / float(ih)
+            canvas.drawImage(ir, x, h - 0.38 * inch, width=lw, height=lh,
+                             mask="auto", preserveAspectRatio=True)
+            x += lw + 8
+        except Exception:
+            pass
     canvas.setFillColor(colors.white)
     canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawString(0.6 * inch, h - 0.32 * inch, "ALBERTA WILDFIRE - DRONE HAZARD DETECTION")
+    canvas.drawString(x, h - 0.30 * inch, _pdf_safe(_BRAND.get("name", "")).upper())
     canvas.restoreState()
 
 
@@ -248,9 +289,15 @@ def _cover(batch: BatchResult) -> list:
     s = batch.stats
     bi = batch.batch_info
     reviewed = bool(bi.get("review"))
-    story = [
-        Spacer(1, 0.6 * inch),
-        Paragraph("Wildfire Hazardous Tree Mapping", _H1),
+    story = [Spacer(1, 0.5 * inch)]
+    if _BRAND.get("logo"):
+        try:
+            story.append(_fit_image(_BRAND["logo"], 3.0 * inch, 0.9 * inch))
+            story.append(Spacer(1, 0.15 * inch))
+        except Exception:
+            pass
+    story += [
+        Paragraph(_pdf_safe(_BRAND.get("name", "Wildfire Hazardous Tree Mapping")), _H1),
         Paragraph("Drone Forest Hazard Detection - Field Report", _H2),
         Spacer(1, 0.25 * inch),
         _review_badge(reviewed),
@@ -534,8 +581,11 @@ def build_report(
     ai_text: Optional[str] = None,
     max_image_pages: int = 30,
     map_dir: Optional[Path] = None,  # offline tile cache for a real map backdrop
+    branding_dir: Optional[Path] = None,  # branding/ folder -> logo + name in the PDF
 ) -> Path:
     """Build the PDF field report at `out_path`. Returns the path."""
+    global _BRAND
+    _BRAND = _load_branding(branding_dir)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     assets = out_path.parent / "_report_assets"

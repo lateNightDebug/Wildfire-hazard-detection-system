@@ -653,7 +653,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 job["stage"] = "building PDF"
                 pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text,
                                    max_image_pages=settings.report_max_image_pages,
-                                   map_dir=settings._resolve(settings.map_tiles_dir))
+                                   map_dir=settings._resolve(settings.map_tiles_dir),
+                                   branding_dir=PROJECT_ROOT / "branding")
                 note = "" if reviewed else "Generated from UNREVIEWED proposals - confirm the boxes first for a reviewed report."
                 if not model:
                     note = (note + " LM Studio offline - AI analysis omitted.").strip()
