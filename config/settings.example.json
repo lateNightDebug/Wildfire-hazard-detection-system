@@ -1,4 +1,5 @@
 {
+  "operator_name": "",
   "lmstudio_url": "http://localhost:1234",
   "lmstudio_model": "qwen3.5-9b",
   "output_dir": "outputs",

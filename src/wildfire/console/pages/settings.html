@@ -99,6 +99,13 @@
       <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
         <div style="font-size:13px; font-weight:600;">Report · AI analysis (LM Studio)</div>
         <div class="form-row">
+          <label>Operator name</label>
+          <div>
+            <input class="input" id="operator_name" type="text" placeholder="e.g. M. Reyes (optional)">
+            <div class="hint">Who produced the run — shown on reports; blank = omitted. Not a login.</div>
+          </div>
+        </div>
+        <div class="form-row">
           <label>LM Studio URL</label>
           <input class="input" id="lmstudio_url" type="text" spellcheck="false">
         </div>
@@ -180,8 +187,8 @@
 <script src="/static/console.js"></script>
 <script>
 renderNav("settings");
-const FIELDS = ["conf_threshold", "slice_size", "overlap_ratio", "preprocess_max_mb",
-                "severity_deadtrees_high",
+const FIELDS = ["operator_name", "conf_threshold", "slice_size", "overlap_ratio",
+                "preprocess_max_mb", "severity_deadtrees_high",
                 "severity_deadtrees_medium", "lmstudio_url", "lmstudio_model", "language",
                 "onnx_input_size", "onnx_normalize", "onnx_channel_order", "onnx_nms_iou",
                 "source_dir", "output_dir"];

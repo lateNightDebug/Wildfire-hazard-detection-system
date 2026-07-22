@@ -530,6 +530,7 @@ function drawSession() {
   const bi = DETAIL.batch_info || {};
   const kv = (k, v) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
   document.getElementById("session-rows").innerHTML = [
+    ...(bi.operator ? [kv("Operator", bi.operator)] : []),
     kv("Drone / camera", DETAIL.drone || "not in EXIF"),
     kv("GPS", DETAIL.gps ? fmtCoord(DETAIL.gps[0], DETAIL.gps[1]) : "not embedded"),
     kv("Images", DETAIL.images),

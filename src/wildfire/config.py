@@ -76,6 +76,10 @@ def _default_model_sources() -> list[ModelSource]:
 
 @dataclass
 class Settings:
+    # --- operator attribution (NOT an account system: a name for reports /
+    #     future cloud sync so a run can be traced to who produced it) ---
+    operator_name: str = ""
+
     # --- LM Studio (Layer 2) ---
     lmstudio_url: str = "http://localhost:1234"
     lmstudio_model: str = "qwen3.5-9b"

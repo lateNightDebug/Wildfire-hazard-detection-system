@@ -75,6 +75,7 @@ class SettingsBody(BaseModel):
 
 # Settings the UI may edit, with a light validator each.
 _EDITABLE_SETTINGS: dict = {
+    "operator_name": str,
     "lmstudio_url": str,
     "lmstudio_model": str,
     "language": str,

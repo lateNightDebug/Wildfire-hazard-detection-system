@@ -305,6 +305,10 @@ def _cover(batch: BatchResult) -> list:
     ]
     info = [
         ["Batch", str(bi.get("batch_label", "n/a"))],
+    ]
+    if bi.get("operator"):
+        info.append(["Operator", _pdf_safe(str(bi["operator"]))])
+    info += [
         ["Generated", str(bi.get("generated_at", ""))],
         ["Device", str(bi.get("device", ""))],
         ["Images processed", str(s.get("images_processed", 0))],
