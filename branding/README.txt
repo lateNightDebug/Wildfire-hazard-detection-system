@@ -1,22 +1,25 @@
-品牌化文件夹 (Branding)
-========================
+BRANDING FOLDER
+===============
 
-把品牌素材放进这个文件夹,重启应用即可生效 —— 不用改代码。
+Put your brand assets in this folder and restart the app — no code changes.
 
 1) LOGO
-   放一个文件命名为 logo.png / logo.svg / logo.jpg 之一。
-   导航栏左上角会自动显示它(高度 32px,宽度自适应)。
-   没有 logo 文件时,只显示文字标题。
+   Add a file named logo.png or logo.jpg (see LOGO_GUIDE.txt for format/size).
+   It appears in the console UI and the PDF reports automatically.
+   With no logo file, only the text title is shown.
 
-2) 名称和副标题 + 颜色
-   编辑 brand.json:
-   - "app_name"  : 导航栏主标题(如 "CIRUS Wildfire Detection")
-   - "subtitle"  : 副标题(如 "Operations Console")
-   - "colors.primary"       : 主题主色(深色,导航高亮/按钮),十六进制如 "#1B4079"
-   - "colors.primary_light" : 主题浅色(状态点/进度),十六进制
+2) NAME / SUBTITLE / COLORS
+   Edit brand.json:
+   - "app_name"             : main title (e.g. "CIRUS Wildfire Detection")
+   - "subtitle"             : subtitle (e.g. "Operations Console")
+   - "colors.primary"       : theme primary color (dark; nav highlight/buttons),
+                              hex, e.g. "#1B4079"
+   - "colors.primary_light" : theme light color (status dots/progress), hex
 
-3) 生效
-   改完后重启桌面应用(关窗口重开)。界面会读取本文件夹的最新内容。
+3) TO APPLY
+   Restart the desktop app (close the window and reopen). The UI reads the
+   latest content of this folder at startup.
 
-注意: 这个文件夹是本地品牌配置,不会进 Git(已 gitignore),
-所以每台机器可以有自己的品牌设置,更新代码也不会覆盖你的 logo。
+NOTE: This folder is local brand config and is NOT committed to Git
+(gitignored), so each machine can keep its own branding and code updates
+never overwrite your logo.
