@@ -55,17 +55,38 @@ function toast(msg, ms = 5000) {
   setTimeout(() => t.remove(), ms);
 }
 
+/* Branding — read from the branding/ folder (name, colors, logo). Applied on
+   load so dropping a logo + editing brand.json rebrands the whole console. */
+let BRANDING = {
+  app_name: "Wildfire Hazard Detection System",
+  subtitle: "Operations Console · Offline",
+  logo_url: null, colors: {},
+};
+let _navActive = null;
+
+function applyBrandingColors() {
+  const c = BRANDING.colors || {};
+  const root = document.documentElement.style;
+  if (c.primary) root.setProperty("--green", c.primary);
+  if (c.primary_light) root.setProperty("--green-2", c.primary_light);
+}
+
 /* Top navigation, shared by all pages. `active`: dashboard | scans | review | map */
 function renderNav(active) {
+  _navActive = active;
   const tab = (id, label, href) => {
     const cls = "nav-tab" + (active === id ? " active" : "");
     return `<a class="${cls}" href="${href}">${label}</a>`;
   };
+  const logo = BRANDING.logo_url
+    ? `<img src="${esc(BRANDING.logo_url)}" alt="logo" style="height:32px; width:auto; border-radius:6px;">`
+    : "";
   document.getElementById("topnav").innerHTML = `
     <div class="brand">
+      ${logo}
       <div style="display:flex; flex-direction:column; line-height:1.15;">
-        <span class="brand-name">Wildfire Hazard Detection System</span>
-        <span class="brand-sub">Operations Console · Offline</span>
+        <span class="brand-name">${esc(BRANDING.app_name)}</span>
+        <span class="brand-sub">${esc(BRANDING.subtitle)}</span>
       </div>
     </div>
     <div class="nav-tabs">
@@ -80,6 +101,13 @@ function renderNav(active) {
       <div class="live"><span class="live-dot"></span><span class="mono">Local · Offline</span></div>
     </div>`;
 }
+
+// Load branding once; re-render the nav and recolor when it arrives.
+api("/api/branding").then(b => {
+  BRANDING = Object.assign(BRANDING, b);
+  applyBrandingColors();
+  if (_navActive) renderNav(_navActive);
+}).catch(() => {});
 
 /* Stylized terrain backdrop for the hazard map (from the design mockup).
    It is a decorative canvas — pins are placed by real GPS, normalized to the

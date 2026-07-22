@@ -193,6 +193,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=PKG_DIR / "static"), name="static")
     app.mount("/outputs", StaticFiles(directory=app.state.settings.output_path), name="outputs")
+    branding_dir = PROJECT_ROOT / "branding"
+    branding_dir.mkdir(exist_ok=True)
+    app.mount("/branding", StaticFiles(directory=branding_dir), name="branding")
+
+    # ------------------------------------------------------------- branding
+    @app.get("/api/branding")
+    def api_branding():
+        """Brand config the UI applies at load: name, colors, and an auto-detected
+        logo file — drop logo.png/svg into branding/ and it appears, no code edit."""
+        cfg = data._load_json(branding_dir / "brand.json") or {}
+        logo_url = next(
+            (f"/branding/logo.{ext}" for ext in ("svg", "png", "jpg", "jpeg", "webp")
+             if (branding_dir / f"logo.{ext}").exists()), None)
+        return {
+            "app_name": cfg.get("app_name", "Wildfire Hazard Detection System"),
+            "subtitle": cfg.get("subtitle", "Operations Console · Offline"),
+            "logo_url": logo_url,
+            "colors": cfg.get("colors", {}),
+        }
 
     # ------------------------------------------------------------- pages
     @app.get("/")

@@ -40,3 +40,6 @@ map/
 
 # Local dev tooling
 .claude/
+
+# Branding: keep the config/README, ignore dropped-in logo assets
+branding/logo.*
