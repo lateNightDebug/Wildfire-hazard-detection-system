@@ -53,7 +53,9 @@ def test_pdf_safe_replaces_non_latin1():
     from src.wildfire.report import _pdf_safe
 
     assert _pdf_safe("N—S – ‘q’ “w” … →") == "N-S - 'q' \"w\" ... ->"
-    assert "?" in _pdf_safe("汉")  # dropped, never a black box glyph
+    # any character outside Latin-1 is replaced, never a black box glyph
+    assert "?" in _pdf_safe("\u6c49")  # a CJK character
+    assert "?" in _pdf_safe("\u03c0")  # Greek pi
 
 
 def test_review_badge_reflects_status():

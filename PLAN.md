@@ -1,115 +1,191 @@
-# 交付计划(答辩周)
+# Delivery Plan
 
-对照原始需求表整理,每完成一项打勾。规则:commit 不带 AI 署名。
+Tracked against the original requirements table; each item ticked when done.
+Repo rule: commits carry no AI signature lines.
 
-## 本周必做
+## Batch 1
 
-- [x] **Commit 全部现有工作**(40+ 文件,无署名)
-- [x] **Scan Detail 显示无人机型号**(EXIF Make/Model,实测 DJI L2),开发机 GPU 降级为 "Processed on" 一行(旧 run 无此字段,显示 "not in EXIF";新 run 自动带)
-- [x] **地图弹窗加照片缩略图**(Dashboard + Map 页)
-- [x] **PDF 汇总页加 GPS pin 地图**(按检测类型着色,含图例)
-- [x] **Settings 补全**:报告输出路径设置(重启生效)+ 模型下载按钮
-- [x] **Alerts 加回 Coming Soon 占位**(按原计划)
-- [x] **通用设备支持核查**:代码本就通用(任意 CUDA → Apple MPS → CPU),仅注释写死 4090,已改
-- [x] 全量测试保持绿色(61 个),收尾 commit
+- [x] **Commit all existing work** (40+ files)
+- [x] **Show the drone model in Scan Detail** (EXIF Make/Model, verified as DJI L2);
+      the processing GPU demoted to a "Processed on" row (older runs lack the field
+      and show "not in EXIF"; new runs carry it automatically)
+- [x] **Photo thumbnails in map popups** (Dashboard + Map pages)
+- [x] **GPS pin map on the PDF summary page** (colored by detection type, with legend)
+- [x] **Settings completed**: report/output folder (applies after restart) + a
+      "download missing models" button
+- [x] **Generic hardware support audit**: the code was already generic
+      (any CUDA -> Apple MPS -> CPU); only comments hard-coded an RTX 4090, now fixed
+- [x] Full test suite green (61 tests), wrap-up commit
 
-## 第二批(2026-07-16 完成)
+## Batch 2 (2026-07-16)
 
-- [x] **MRK 文件 GPS 解析**:DJI RTK Timestamp.MRK(厘米级)优先于 EXIF(米级);照片序号自动匹配;真实 DJI L2 数据验证通过。MRK 需和照片放在同一文件夹(任务文件夹原样导入即可)
-- [x] **图片预压缩(老师方案)**:超过 `preprocess_max_mb`(默认 2MB)的图在检测前重编码(保分辨率、质量阶梯),Settings 页可调,0 关闭
-- [x] **真卫星底图(Leaflet + Esri 离线瓦片)**:`scripts/fetch_map_tiles.py --bbox ... --zoom 11 15` 出发前抓一次,Map 页自动切换真卫星图(可缩放/拖动);无瓦片自动回退风格化底图。已抓好 Canmore 作业区 480 张瓦片
-- [x] **道路分类 + 河流湖泊**:`scripts/fetch_map_overlays.py` 从 OSM 抓 GeoJSON(主干道/小径分级、河流、湖泊),离线渲染在卫星图上。作业区已抓 2880 条要素
-- [x] **GPS 检测去重·第 1 层(站点聚类)**:全部带检测图片按 ≤40m 聚成"站点",地图按站点打标(计数徽章 + 最高严重度 + 成员图片列表),页面明示"N 张图合并为 M 个站点"
+- [x] **MRK GPS parsing**: DJI RTK Timestamp.MRK (centimetre-grade) preferred over
+      EXIF (metre-grade); photo sequence matched automatically; verified on real
+      DJI L2 data. The .MRK must sit in the same folder as the photos (importing a
+      mission folder as-is already satisfies this)
+- [x] **Image pre-compression**: photos over `preprocess_max_mb` (default 2 MB) are
+      re-encoded before detection (resolution preserved, quality ladder); adjustable
+      in Settings, 0 disables
+- [x] **Real satellite basemap (Leaflet + offline Esri tiles)**:
+      `scripts/fetch_map_tiles.py --bbox ... --zoom 11 15` fetched once before going
+      offline; the Map page switches to the real satellite view (zoom/pan) and falls
+      back to the stylized canvas when tiles are missing. 480 tiles cached for the
+      Canmore operating area
+- [x] **Classified roads + rivers/lakes**: `scripts/fetch_map_overlays.py` pulls
+      GeoJSON from OSM (highway classes, waterways, water bodies), rendered offline
+      over the satellite map. 2,880 features cached for the area
+- [x] **Detection dedup tier 1 (site clustering)**: flagged images cluster into
+      "sites" within 40 m; the map marks sites (count badge + max severity + member
+      images) and states "N images merged into M sites"
 
-## 第三批·真机反馈修复(2026-07-16 完成)
+## Batch 3 - fixes from real-device feedback (2026-07-16)
 
-- [x] **Leaflet 地图卡死修复**:根因 = 2880 条道路/水系用 SVG 渲染拖死 WebView2;切换 Canvas 渲染器(preferCanvas),实测 SVG path 归零、导航可正常离开地图页
-- [x] **Dashboard 地图与 Map 同步**:两页共用同一份站点数据(/api/map-data)和同一 Leaflet 组件,有瓦片同时切真卫星图
-- [x] **Scans 大数据量二次筛选**:按天折叠(最新天默认展开);超 250 张的连续大航次自动切 part 1/N(实测 1558 张 → 7 段);每段可 "Select images" 展开缩略图勾选后只检测选中的
-- [x] **界面内下载区域地图**:Map 页无瓦片时出横幅按钮、Settings 页 Offline map 卡;bbox 自动取自所有 scan 的 GPS,后台下载带进度
-- [x] **目录整洁**:map_tiles/ → **map/**(瓦片 + overlays.geojson 都在里面);models/ = 模型;outputs/ = 运行结果
-- [x] **删除"水滴"logo**
+- [x] **Leaflet freeze fixed**: root cause was 2,880 road/water features rendered as
+      SVG paths freezing WebView2; switched to the canvas renderer (preferCanvas) -
+      SVG path count now zero and navigating away from the map works
+- [x] **Dashboard map synced with the Map page**: both use the same site data
+      (/api/map-data) and the same Leaflet component, and both switch to real
+      satellite imagery when tiles exist
+- [x] **Second-level filtering for large scans**: day groups collapse (newest day
+      open); continuous flights over 250 images auto-split into part 1/N
+      (1,558 images -> 7 parts); each part offers "Select images" to detect a subset
+- [x] **In-app area map download**: banner button on the Map page when tiles are
+      missing, plus an Offline map card in Settings; bbox inferred from all scan GPS,
+      background download with progress
+- [x] **Tidy folders**: map_tiles/ -> **map/** (tiles + overlays.geojson);
+      models/ = models; outputs/ = run results
+- [x] **Removed the droplet-looking logo**
 
-## 第四批(2026-07-16 完成)
+## Batch 4 (2026-07-16)
 
-- [x] **详情页图片缩放**:滚轮缩放(指向光标位置,最高 12×)、拖拽平移、双击复位;复核画框模式下缩放照常可用
-- [x] **地图标记改类型配色**:火=红、烟=橙、**枯树=黄**(与标注框一致),图例同步;弹窗同时保留严重度徽章
-- [x] **打包分发**:`install.bat`(一键装环境+桌面快捷方式)+ `INSTALL.md`(打包=`git archive`,对方=装 Python→解压→双击 install.bat)
+- [x] **Image zoom in Scan Detail**: cursor-anchored wheel zoom (up to 12x), drag
+      pan, double-click reset; zoom keeps working in box-review mode
+- [x] **Map markers use hazard-type colors**: flame = red, smoke = orange,
+      **dead tree = yellow** (matching the boxes), legend updated; popups keep the
+      severity badge alongside
+- [x] **Packaging**: `install.bat` (one-click environment + desktop shortcut) +
+      `INSTALL.md` (package with `git archive`; recipient installs Python, unzips,
+      double-clicks install.bat)
 
-## 第五批(2026-07-16 完成)
+## Batch 5 (2026-07-16)
 
-- [x] **地图不再盖住导航栏**:导航 z-index 提到 Leaflet 之上 + 地图容器加 stacking context 隔离
-- [x] **Severity Distribution 换成 Hazard Overview**:检测类型统计(类型配色横条)+ 复核积压(几个 run 待确认,一键跳 Review)+ 训练集规模(已确认框数)——三个都是"接下来该干什么"的信号
-- [x] **选图器改全屏二级弹窗**:大缩略图(170px 网格)、文件名秒开、缩略图**逐张按需生成+懒加载**(不再一次性生成 100 张,卡顿根除)、Esc/点遮罩关闭
+- [x] **Map no longer paints over the nav bar**: nav z-index raised above Leaflet
+      and the map container gets its own stacking context
+- [x] **Severity Distribution replaced by Hazard Overview**: detections by type
+      (type-colored bars) + review backlog (runs awaiting confirmation, one click to
+      Review) + training-set size (confirmed boxes) - three "what to do next" signals
+- [x] **Image picker became a full-screen modal**: large thumbnails (170 px grid),
+      instant file list, thumbnails **generated per-image on demand + lazy-loaded**
+      (no more bulk-generating 100 at once), Esc / backdrop to close
 
-## 第六批(2026-07-16 完成)
+## Batch 6 (2026-07-16)
 
-- [x] **检测中界面假死修复(架构级)**:检测挪到独立低优先级子进程(`console/worker.py`),服务进程只轮询进度文件;实测检测全程 API 响应 75–187ms(之前直接 Failed to fetch)
-- [x] **任务文件夹按"已分析/未分析"分组**:已完整检测过的航次收进底部 "✓ ANALYZED" 折叠区(卡片置灰 + Re-detect);部分分析的显示 n/250 徽章;待分析的按天分组置顶
-- [x] **删除右上角假 Operator 账号块**(无账号系统,不摆样子;换成 Local · Offline 状态)
+- [x] **UI freeze during detection fixed (architectural)**: detection moved to a
+      separate low-priority subprocess (`console/worker.py`); the server only polls
+      the progress file. Measured API responses of 75-187 ms during a live detection
+      (previously "Failed to fetch")
+- [x] **Mission folder split into analyzed / pending**: fully detected flights
+      collapse into a "✓ ANALYZED" section (grayed cards + Re-detect); partially
+      analyzed flights show an n/total badge; pending flights stay on top, grouped by day
+- [x] **Removed the fake Operator account chip** (there is no account system;
+      replaced by a plain Local · Offline indicator)
 
-## 第七批(2026-07-16 完成)
+## Batch 7 (2026-07-16)
 
-- [x] **删除 Alerts 占位**(需求从未定义,不再摆假功能)
-- [x] **离线地图下载二级弹窗**:三种模式——扫描区域周边(z12–16,推荐)/ 阿尔伯塔全省底图(z8–11,≈376MB)/ 自定义矩形+缩放;下载前实时估算瓦片数和体积,服务端 3 万瓦片上限保护,弹窗内显示进度
+- [x] **Removed the Alerts placeholder** (never specified; no fake features)
+- [x] **Offline map download dialog**: three modes - around the scanned area
+      (z12-16, recommended) / whole Alberta basemap (z8-11, ~376 MB) / custom
+      rectangle with zoom range; live tile-count and size estimate before starting,
+      a 30,000-tile server-side cap, and progress inside the dialog
 
-## 第八批(2026-07-17 完成)
+## Batch 8 (2026-07-17)
 
-- [x] **说明书 MANUAL.md**:最低/推荐配置、安装、首次联网配置、标准工作流、数据存放、训练闭环、故障排查表、已知边界
-- [x] **地图时间筛选**:按月/按年/All time 下拉,默认最新月份;时间取 **EXIF 拍摄时间**(不是分析时间),Dashboard 小地图同步同一默认时段
+- [x] **User manual (MANUAL.md)**: minimum/recommended specs, installation,
+      first-time online setup, standard workflow, data layout, the training loop,
+      troubleshooting table, known limits
+- [x] **Map time filter**: month / year / all-time dropdown, defaulting to the latest
+      month; dates come from **EXIF capture time** (not analysis time); the dashboard
+      mini-map follows the same default period
 
-## 第九批(2026-07-17 完成)
+## Batch 9 (2026-07-17)
 
-- [x] **清理残留测试 run**:删除 3 个假图 run(console_20260710_122252 / 20260714_145931 / 20260716_203851)及其 _uploads 暂存,只留 3 个真实 DJI run
-- [x] **检测列表点击定位**:详情页点任意检测行 → 预览自动缩放到该框(约占视野 1/3,上限 12×)+ 脉冲聚光环 5 秒;复核模式下同时选中该框——小火苗再也不用肉眼找
+- [x] **Cleaned leftover test runs**: removed 3 synthetic-image runs
+      (console_20260710_122252 / 20260714_145931 / 20260716_203851) and their
+      _uploads staging, leaving only the 3 real DJI runs
+- [x] **Click a detection to locate it**: clicking any row in the detection list
+      zooms the preview onto that box (about 1/3 of the view, capped at 12x) and
+      pulses a spotlight ring for 5 s; in review mode it also selects the box - no
+      more hunting for a tiny flame by eye
 
-## 第十批(2026-07-17 完成)
+## Batch 10 (2026-07-17)
 
-- [x] **措辞**:"Human-reviewed" → "Reviewed"(全 UI)
-- [x] **AI 分析专业化**:喂给 LLM 的数据从"几个总数"升级为完整调查事实(机型/拍摄时间/测区范围/密度/置信度/复核状态/重叠计数警告/热点排名);输出强制五段结构(执行摘要/发现/优先位置/行动建议/数据质量与局限);PDF 渲染章节标题
+- [x] **Wording**: "Human-reviewed" -> "Reviewed" across the UI
+- [x] **Professional AI analysis**: the LLM input went from a few totals to full
+      survey facts (aircraft / capture time / surveyed extent / density / confidence /
+      review status / overlap-double-counting caveat / ranked hotspots); the output is
+      forced into five sections (Executive Summary / Findings / Priority Locations /
+      Recommended Actions / Data Quality & Limitations); the PDF renders section headings
 
-## 第十一批(2026-07-17 完成)
+## Batch 11 (2026-07-17)
 
-- [x] **LLM 提示词修复**:标题行只留标题,内容指引明确标注"不得抄进报告"(此前模型把格式说明原样当正文)
-- [x] **报告图页上限**:`report_max_image_pages`(默认 30),按检测密度排序取热点,封面注明 "top N of M";250 张航次不再出 250 页
-- [x] **AI 上下文确认无爆涨**:喂给 LLM 的始终是聚合统计 + top-15 热点,与航次大小无关
-- [x] **Detail 页性能**:胶片条改用服务端小缩略图(约 17KB/张,懒加载),不再拉全尺寸标注图
-- [x] **航次分段 250 → 100**(一段 = 一次复核工作量)
+- [x] **LLM prompt fix**: heading lines contain the title only and the content
+      guidance is explicitly marked "never copy into the report" (the model used to
+      paste the format instructions into the body)
+- [x] **Report image-page cap**: `report_max_image_pages` (default 30), hazard-densest
+      images first, with a "top N of M" note on the cover; a 250-image flight no
+      longer produces 250 pages
+- [x] **Confirmed the AI context does not grow**: the LLM always receives aggregate
+      statistics + the top 15 hotspots, independent of flight size
+- [x] **Scan Detail performance**: the film strip uses server-side thumbnails
+      (~17 KB each, lazy-loaded) instead of full-size annotated JPEGs
+- [x] **Flight parts 250 -> 100** (one part = one review sitting)
 
-## 第十二批(2026-07-17 完成)
+## Batch 12 (2026-07-17)
 
-- [x] **PDF 三列引用错误**:`_display_copy` 缓存名加路径 hash——annotated 与 gridmaps 的 `_confirmed` 同名互相覆盖,导致"标注列"显示网格图
-- [x] **PDF 地图黑块**:汇总页 pin 图改印刷友好浅色主题(白底浅网格 + 深描边圆点)
-- [x] **黑色方块字符**:代码里 12 处 em-dash 改 ASCII;`_pdf_safe()` 把 LLM 的花式标点映射为 ASCII 并过滤 Latin-1 外字符
-- [x] 真实报告重新生成验证:0 乱码、五段结构无提示词残留、18 个独立图片副本
+- [x] **Wrong image in the PDF's three columns**: `_display_copy` cache keys now hash
+      the full path - annotated and gridmaps `_confirmed` files share a stem and were
+      overwriting each other, so the "Detections" column showed the grid map
+- [x] **Black rectangle instead of the PDF map**: the summary pin map switched to a
+      print-friendly light theme (white canvas, light grid, dark-outlined dots)
+- [x] **Black box glyphs**: 12 em-dashes in code strings changed to ASCII;
+      `_pdf_safe()` maps the LLM's typographic punctuation to ASCII and strips
+      anything outside Latin-1
+- [x] Verified by regenerating a real report: zero mojibake, clean five-section
+      analysis with no prompt leakage, 18 distinct image copies
 
-## 第十三批(2026-07-17 完成)
+## Batch 13 (2026-07-17)
 
-- [x] **PDF 地图升级为真实卫星底图**:直接拼接离线瓦片缓存(自动选已缓存的最高缩放级),pin 精确投影,白底信息框保证图例/署名可读;无瓦片区域才回退浅色示意图(并明示原因)。真实数据验证:zoom 16 影像,森林/河流/小径清晰
+- [x] **PDF map upgraded to real satellite imagery**: stitched directly from the
+      offline tile cache (highest fully-cached zoom auto-selected), pins projected
+      precisely, white chrome boxes keeping legend/attribution readable; falls back to
+      the light schematic only where no tiles are cached (and says so). Verified on
+      real data: zoom-16 imagery with visible forest, river and trails
 
-## 等待外部条件
+## Waiting on external conditions
 
-- [ ] **接入训练好的 dead_tree.onnx**(模型还在 Azure 训练;放进 models/ + Settings 页调预处理开关)
-- [ ] **真实 100–200 张航次全流程压测**(拿到真实数据后)
+- [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it
+      into models/ and adjust the preprocessing switches in Settings)
+- [ ] **Full-flight shakedown on 100-200 real images**
 
-## 明确推迟(答辩讲成 roadmap,不做)
+## Deliberately deferred (roadmap talking points)
 
-- [ ] GPS 去重第 2/3 层(几何投影 → ODM 正射拼图)
-- [ ] 200 张报告瘦身 + GeoJSON 导出
-- [ ] 流水线并行加速(换 ONNX 模型本身就是最大提速)
-- [ ] Mac 实机验证(代码层面已兼容 MPS/CPU,未实测)
-- [ ] Alerts 功能本体
+- [ ] Detection dedup tiers 2/3 (geometric projection -> ODM orthomosaic)
+- [ ] Slimmer reports for 200-image flights + GeoJSON export
+- [ ] Pipeline parallelism (switching to the ONNX model is itself the biggest speedup)
+- [ ] Verification on real Mac hardware (code already supports MPS/CPU, untested)
+- [ ] The Alerts feature itself
 
-## 已完成(存档)
+## Completed (archive)
 
-- [x] Layer 1 检测(SAHI+YOLO 火/烟 + DeepForest 枯树提案)
-- [x] Layer 1.5 人工复核 → labels.json 训练集(控制台内置画框编辑器)
-- [x] Layer 2 报告(LM Studio 降级 + ReportLab PDF,时间戳命名永不覆盖)
-- [x] ONNX 检测器插件(Custom Vision / YOLO 导出自适应,即插即用)
-- [x] Custom Vision 训练集导出 + 上传脚本(tile 切分匹配推理分布)
-- [x] 操作控制台六页:Dashboard / Scans / Review / Map / Reports / Settings
-- [x] 任务文件夹导入(按天/航次分组,忽略遥测文件)
-- [x] 显示级严重度(枯树密度驱动,阈值可配)
-- [x] 输出分类存放(originals / annotated / gridmaps)
-- [x] 桌面应用形态(pywebview 原生窗口 + 图标 + 快捷方式)
-- [x] 59 个自动化测试
+- [x] Layer 1 detection (SAHI + YOLO flame/smoke + DeepForest dead-tree proposals)
+- [x] Layer 1.5 human review -> labels.json training set (box editor built into the console)
+- [x] Layer 2 reporting (LM Studio with graceful fallback + ReportLab PDF,
+      timestamped filenames that never overwrite)
+- [x] ONNX detector plugin (adapts to Custom Vision / YOLO exports, drop-in)
+- [x] Custom Vision dataset export + upload scripts (tiling matched to inference)
+- [x] Six-page operations console: Dashboard / Scans / Review / Map / Reports / Settings
+- [x] Mission-folder ingest (grouped by day/flight, telemetry files ignored)
+- [x] Display-level severity (dead-tree density driven, configurable thresholds)
+- [x] Sorted run outputs (originals / annotated / gridmaps)
+- [x] Desktop application form (pywebview native window + icon + shortcuts)
+- [x] Automated test suite
