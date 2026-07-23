@@ -5,6 +5,9 @@ A fully-offline, AI-powered desktop tool that analyzes drone photos of forest to
 human reviewer confirm every detection, and produces PDF field reports with an offline
 satellite hazard map.
 
+> **Team members:** start with **[TEAM_GUIDE.md](TEAM_GUIDE.md)** — what the project
+> is, how to run and maintain it, how to explain it, and (part 2) how to work on
+> the code.
 > **End users:** see **[MANUAL.md](MANUAL.md)** for system requirements, installation,
 > the standard field workflow, troubleshooting and known limits.
 > Packaging/distribution: **[INSTALL.md](INSTALL.md)**. Delivery progress: **[PLAN.md](PLAN.md)**.
