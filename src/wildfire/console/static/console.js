@@ -1,16 +1,16 @@
 /* Shared console helpers: top nav, fetch wrapper, formatting, severity map. */
 
 const SEV = {
-  high:   { label: "High",   color: "#E05555" },
+  high: { label: "High", color: "#E05555" },
   medium: { label: "Medium", color: "#F0A500" },
-  low:    { label: "Low",    color: "#3A9A3A" },
+  low: { label: "Low", color: "#3A9A3A" },
 };
 
 /* Hazard TYPE colors — same language as the annotation boxes: most detections
    are dead trees (yellow); flame red and smoke orange stand out against them. */
 const KIND = {
-  flame:    { label: "Flame",     color: "#E05555" },
-  smoke:    { label: "Smoke",     color: "#F0A500" },
+  flame: { label: "Flame", color: "#E05555" },
+  smoke: { label: "Smoke", color: "#F0A500" },
   deadtree: { label: "Dead Tree", color: "#FFD700" },
 };
 const kindOf = s => KIND[s.kind] || KIND.deadtree;
@@ -34,7 +34,8 @@ async function api(path, opts) {
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
 }
 
 function sevBadge(sev) {
@@ -60,7 +61,7 @@ function toast(msg, ms = 5000) {
 let BRANDING = {
   app_name: "Wildfire Hazard Detection System",
   subtitle: "Operations Console · Offline",
-  logo_url: null, colors: {},
+  logo_url: "./branding/logo.png", colors: {},
 };
 let _navActive = null;
 
@@ -107,7 +108,7 @@ api("/api/branding").then(b => {
   BRANDING = Object.assign(BRANDING, b);
   applyBrandingColors();
   if (_navActive) renderNav(_navActive);
-}).catch(() => {});
+}).catch(() => { });
 
 /* Stylized terrain backdrop for the hazard map (from the design mockup).
    It is a decorative canvas — pins are placed by real GPS, normalized to the
@@ -209,7 +210,7 @@ function initLeafletSites(el, sites, info, opts = {}) {
           return { color: "#cfc09a", weight: 1.2, opacity: .5, dashArray: "4 3" };
         },
       }).addTo(map);
-    }).catch(() => {});
+    }).catch(() => { });
   }
   const markers = sites.map((s, i) => {
     const c = kindOf(s).color;
