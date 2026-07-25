@@ -326,7 +326,8 @@ def _cover(batch: BatchResult) -> list:
         ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     story += [t, Spacer(1, 0.3 * inch),
-              Paragraph("Legend: dead tree = yellow, flame = red, smoke = orange.", _SMALL),
+              Paragraph("Legend: flame = red, smoke = dark slate, dead tree = bone white.",
+                        _SMALL),
               PageBreak()]
     return story
 
@@ -374,7 +375,105 @@ def _image_page(im: ImageResult, assets: Path) -> list:
     return story
 
 
+GALLERY_COLS, GALLERY_ROWS = 4, 2   # 8 images per contact-sheet page
+
+
+def _gallery_pages(images: list[ImageResult], assets: Path) -> list:
+    """Contact sheet: the annotated rendition of many images per page.
+
+    A full `_image_page` per image is the right treatment for the few worst
+    hazards and pure bulk for the rest -- 40 images meant 40 pages nobody
+    scrolls through. Here each image is one annotated thumbnail plus a caption
+    line (name, counts, GPS), 8 to a page, which is enough to recognise a site
+    and find it in the console.
+    """
+    if not images:
+        return []
+    w, h = PAGE
+    usable_w = w - 1.2 * inch
+    gap = 0.12 * inch
+    col = (usable_w - gap * (GALLERY_COLS - 1)) / GALLERY_COLS
+    thumb_h = 1.55 * inch
+
+    story = [Paragraph("Hazard Image Gallery", _H1),
+             Paragraph("Annotated detections, highest hazard count first. Full-size "
+                       "imagery and every detection stay in the review console.", _SMALL),
+             Spacer(1, 0.12 * inch)]
+    per_page = GALLERY_COLS * GALLERY_ROWS
+    for start in range(0, len(images), per_page):
+        chunk = images[start:start + per_page]
+        cells, caps = [], []
+        for im in chunk:
+            cells.append(_fit_image(_display_copy(im.annotated_path, assets, max_px=700),
+                                    col, thumb_h))
+            counts = _fmt_counts(_counts_by_type(im)) or "no detections"
+            gps = f"{im.gps[0]:.5f}, {im.gps[1]:.5f}" if im.gps else "no GPS"
+            caps.append(Paragraph(
+                f"<b>{_pdf_safe(im.name)}</b><br/>{_pdf_safe(counts)}<br/>{gps}", _SMALL))
+        # Pad the last row so the table stays rectangular.
+        while len(cells) % GALLERY_COLS:
+            cells.append("")
+            caps.append("")
+
+        for r in range(0, len(cells), GALLERY_COLS):
+            t = Table([cells[r:r + GALLERY_COLS], caps[r:r + GALLERY_COLS]],
+                      colWidths=[col] * GALLERY_COLS)
+            t.setStyle(TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+                ("VALIGN", (0, 1), (-1, 1), "TOP"),
+                ("TOPPADDING", (0, 1), (-1, 1), 2),
+                ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
+            ]))
+            story.append(t)
+        if start + per_page < len(images):
+            story.append(PageBreak())
+    story.append(PageBreak())
+    return story
+
+
+def _image_index(batch: BatchResult) -> list:
+    """One compact row per image, covering EVERY image in the run.
+
+    The gallery and detail pages are both ranked and capped, so without this
+    table a reader cannot tell whether an image was clean or simply cut. ~28
+    rows a page keeps a 250-image run to about nine pages.
+    """
+    rows = [["Image", "Captured", "GPS (lat, lon)", "Alt (m)", "Detections", "By type"]]
+    for im in batch.images:
+        gps = f"{im.gps[0]:.5f}, {im.gps[1]:.5f}" if im.gps else "-"
+        rows.append([
+            _pdf_safe(im.name), _pdf_safe(str(im.timestamp or "-")), gps,
+            str(im.altitude if im.altitude is not None else "-"),
+            str(len(im.detections)),
+            _pdf_safe(_fmt_counts(_counts_by_type(im)) or "-"),
+        ])
+    t = Table(rows, repeatRows=1,
+              colWidths=[2.5 * inch, 1.5 * inch, 1.8 * inch, 0.7 * inch, 0.9 * inch, 1.8 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), HEADER), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d5dbdf")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f9fa")]),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    return [Paragraph("Image Index", _H1),
+            Paragraph(f"All {len(batch.images)} images in this run.", _SMALL),
+            Spacer(1, 0.12 * inch), t]
+
+
 MAP_W, MAP_H = 900, 540
+
+# Hazard-TYPE pin colors (RGB). Keep in sync with the BGR constants in
+# annotate.py and KIND in console/static/console.js. Smoke and dead tree were
+# orange and yellow, only 1.48:1 apart -- unreadable next to each other and
+# worse in greyscale, which is how a field report usually gets printed.
+FLAME_RGB = (224, 85, 85)       # #E05555
+SMOKE_RGB = (84, 110, 122)      # #546E7A
+DEADTREE_RGB = (217, 205, 176)  # #D9CDB0
+CLEAR_RGB = (58, 154, 58)       # no detections
 
 
 def _merc_px(lat: float, lon: float, zoom: int) -> tuple[float, float]:
@@ -442,7 +541,7 @@ def _pin_map_png(batch: BatchResult, assets: Path,
                  map_dir: Optional[Path] = None) -> Optional[Path]:
     """Hazard map for the summary page: REAL offline satellite tiles when the
     area is cached (same imagery as the console map), else a light schematic.
-    One pin per GPS-tagged image: flame red, smoke orange, dead tree yellow.
+    One pin per GPS-tagged image: flame red, smoke slate, dead tree bone.
     """
     from PIL import Image as PILImage
     from PIL import ImageDraw
@@ -452,9 +551,9 @@ def _pin_map_png(batch: BatchResult, assets: Path,
         if not im.gps:
             continue
         names = {d.display for d in im.detections}
-        color = ((224, 85, 85) if "Flame" in names else
-                 (240, 165, 0) if "Smoke" in names else
-                 (255, 215, 0) if im.detections else (58, 154, 58))
+        color = (FLAME_RGB if "Flame" in names else
+                 SMOKE_RGB if "Smoke" in names else
+                 DEADTREE_RGB if im.detections else CLEAR_RGB)
         pts.append((float(im.gps[0]), float(im.gps[1]), color))
     if not pts:
         return None
@@ -487,14 +586,19 @@ def _pin_map_png(batch: BatchResult, assets: Path,
 
     for lat, lon, color in pts:
         px, py = to_canvas(lat, lon)
+        # Dark fills get a white ring so they read against satellite imagery;
+        # the bone dead-tree fill is too light for that and needs a dark ring
+        # instead, on imagery and on white paper alike.
+        light = sum(color) / 3 > 170
         d.ellipse([px - 7, py - 7, px + 7, py + 7], fill=color,
-                  outline=(255, 255, 255) if backdrop else (70, 70, 64), width=2)
+                  outline=(70, 70, 64) if (light or not backdrop) else (255, 255, 255),
+                  width=2)
 
     # readable chrome over imagery: white boxes behind title + legend
     d.rectangle([8, 6, 8 + 8 * len(title) // 1 + 16, 26], fill=(255, 255, 255))
     d.text((16, 10), title, fill=(60, 60, 55))
-    legend = [("Flame", (224, 85, 85)), ("Smoke", (240, 165, 0)),
-              ("Dead tree", (255, 215, 0)), ("No detections", (58, 154, 58))]
+    legend = [("Flame", FLAME_RGB), ("Smoke", SMOKE_RGB),
+              ("Dead tree", DEADTREE_RGB), ("No detections", CLEAR_RGB)]
     d.rectangle([8, H - 34, 470, H - 8], fill=(255, 255, 255))
     x = 16
     for label, color in legend:
@@ -538,10 +642,14 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path,
     story = [Paragraph("Batch Summary", _H1), Spacer(1, 0.2 * inch), st, Spacer(1, 0.3 * inch)]
     map_png = _pin_map_png(batch, assets, map_dir=map_dir)
     if map_png:
-        story += [Paragraph("Hazard Locations", _H2),
-                  _fit_image(str(map_png), 6.6 * inch, 3.9 * inch),
-                  Spacer(1, 0.25 * inch)]
-    story.append(Paragraph("AI Analysis & Recommendations", _H2))
+        # The map gets its own page ON PURPOSE. Under the stats table it only had
+        # ~2.9in of height left, and shrunk to fit it was unreadable; the page is
+        # landscape, so alone it can run 9.4in wide. For a crew deciding where to
+        # drive, this is the single most useful page in the report.
+        story += [PageBreak(), Paragraph("Hazard Locations", _H1), Spacer(1, 0.1 * inch),
+                  _fit_image(str(map_png), 9.4 * inch, 5.6 * inch)]
+    story.append(PageBreak())
+    story.append(Paragraph("AI Analysis & Recommendations", _H1))
     body = ai_text or ("[Automated AI analysis unavailable - LM Studio was not reachable. "
                        "Start the local LM Studio server and load the model to include analysis.]")
     body = _pdf_safe(body)
@@ -565,17 +673,18 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path,
 
 
 def select_image_pages(batch: BatchResult, cap: int) -> tuple[list[ImageResult], Optional[str]]:
-    """Pick which images get a PDF page: hazard pages ranked by detection count,
-    capped so a 250-image flight yields a readable report, not 250 pages."""
+    """Pick which images carry imagery in the PDF (full page or gallery cell),
+    ranked by detection count so a 250-image flight yields a readable report."""
     flagged = sorted((im for im in batch.images if im.detections),
                      key=lambda im: len(im.detections), reverse=True)
     clean = [im for im in batch.images if not im.detections]
     picked = (flagged + clean)[:max(1, cap)]
     note = None
     if len(batch.images) > len(picked):
-        note = (f"Showing the top {len(picked)} of {len(batch.images)} images "
-                "(ranked by detections). Every image and detection remains in "
-                "batch.json and the review console.")
+        note = (f"Imagery shown for the top {len(picked)} of {len(batch.images)} images "
+                "(ranked by detections). Every image is listed in the Image Index at "
+                "the end; full imagery and every detection stay in batch.json and the "
+                "review console.")
     return picked, note
 
 
@@ -586,8 +695,15 @@ def build_report(
     max_image_pages: int = 30,
     map_dir: Optional[Path] = None,  # offline tile cache for a real map backdrop
     branding_dir: Optional[Path] = None,  # branding/ folder -> logo + name in the PDF
+    detail_pages: int = 4,  # how many of those get a FULL page; rest go in the gallery
 ) -> Path:
-    """Build the PDF field report at `out_path`. Returns the path."""
+    """Build the PDF field report at `out_path`. Returns the path.
+
+    Section order: cover (what this run is) -> summary (stats, hazard map, AI
+    analysis) -> detail pages for the worst images -> gallery -> full index.
+    `max_image_pages` caps how many images carry imagery at all; `detail_pages`
+    splits that budget between full pages and the contact sheet.
+    """
     global _BRAND
     _BRAND = _load_branding(branding_dir)
     out_path = Path(out_path)
@@ -601,13 +717,22 @@ def build_report(
         title="Wildfire Hazardous Tree Mapping - Field Report",
     )
     picked, cap_note = select_image_pages(batch, max_image_pages)
+    # Reader order: what this is -> what it found -> the evidence behind it.
+    # Per-image material used to sit in the middle, so a reader had to page past
+    # 30 image pages to reach the numbers and the map they actually came for.
     story: list = []
     story += _cover(batch)
     if cap_note:
         story.insert(-1, Paragraph(cap_note, _SMALL))  # before the cover's PageBreak
-    for im in picked:
-        story += _image_page(im, assets)
     story += _summary_page(batch, ai_text, assets, map_dir=map_dir)
+    story.append(PageBreak())
+
+    # Only the worst few earn a full page; the rest go on the contact sheet.
+    detail = picked[:max(0, detail_pages)]
+    for im in detail:
+        story += _image_page(im, assets)
+    story += _gallery_pages(picked[len(detail):], assets)
+    story += _image_index(batch)
 
     doc.build(story, onFirstPage=_banner, onLaterPages=_banner, canvasmaker=_NumberedCanvas)
     return out_path

@@ -89,7 +89,7 @@ src/wildfire/
   gps.py          EXIF GPS, DJI RTK .MRK parsing, camera model
   annotate.py     draw_boxes(), grid_density_map()
   llm.py          LM Studio call + report system prompt
-  report.py       PDF: cover, per-image pages, summary + offline satellite map
+  report.py       PDF: cover, summary + offline satellite map, then imagery
   cv_export.py    labels.json -> Azure Custom Vision dataset
   app.py          legacy Gradio review UI (superseded by the console, still runs)
 
@@ -147,16 +147,34 @@ outputs/<run>_<timestamp>/
 - **Severity (High/Medium/Low) is display-only**, derived from detection type
   and dead-tree density (thresholds in settings). It is never stored in
   batch.json/labels.json and never appears as a data field.
-- **Map/box colors encode hazard TYPE**: flame red, smoke orange, dead tree
-  yellow. Severity badges are a separate axis; do not merge the two color systems.
+- **Map/box colors encode hazard TYPE**: flame red `#E05555`, smoke slate
+  `#546E7A`, dead tree bone `#D9CDB0`, and each type also carries an icon
+  (flame / puff / bare trunk) so color is never the only channel. Severity
+  badges are a separate axis; do not merge the two color systems. Smoke and
+  dead tree were orange and yellow until a client review: only 1.48:1 apart,
+  below WCAG's 3:1 for graphics and identical under red-green colorblindness.
+  Slate vs bone is 3.42:1 — do not drift them back together. The palette is
+  defined in FOUR places that must stay in sync: `:root` in console.css, `KIND`
+  in console.js, the BGR constants in `annotate.py`, and the `*_RGB` constants
+  in `report.py`. Bone is only 1.58:1 against white, so on light surfaces it
+  always needs the dark outline (`--kind-outline`, or the ring logic in
+  `_pin_map_png`).
 - **Detection in a subprocess, reports in a background thread** — see rule 6.
 - **Confirmed imagery is rendered once at Save-review**, and report generation
   reuses it (`_confirmed_batch(force_render=False)`). Re-rendering 100 full-res
   frames during a report took 32 s and froze the window.
 - **Offline tiles come from Esri** (their terms permit offline export);
   Google/Bing forbid tile caching. Do not switch providers casually.
-- **Report image pages are capped** (`report_max_image_pages`, default 30,
-  hazard-densest first) so a 100-image flight does not produce a 100-page PDF.
+- **Report order is conclusions-then-evidence**: cover -> batch summary ->
+  full-page hazard map -> AI analysis -> detail pages -> gallery -> image index.
+  Per-image material sits at the END; a reader should never have to page past 30
+  photos to reach the numbers. Do not move imagery back up front.
+- **Report imagery is capped and tiered**: `report_max_image_pages` (default 30,
+  hazard-densest first) is how many images carry a picture at all, and
+  `report_detail_pages` (default 4) is how many of those get a full page. The
+  rest go on a contact sheet 8-up, and EVERY image gets a row in the index table
+  regardless. One page per image turned a 58-image run into 33 pages; the tiered
+  layout makes it 15 and covers all 58 instead of 30.
 - **LLM input is bounded**: aggregate stats + top-15 hotspots, independent of
   flight size. Do not feed per-image data for every image.
 

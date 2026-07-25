@@ -2,8 +2,8 @@
 
 Per field feedback, the annotated image clusters nearby detections into a single
 bold, labeled box (type + count + confidence) instead of many tiny faint boxes.
-Colors: dead tree = yellow, flame = red, smoke = orange. All functions operate on
-BGR uint8 images and return new arrays.
+Colors: flame = red, smoke = dark slate, dead tree = bone white. All functions
+operate on BGR uint8 images and return new arrays.
 """
 
 from __future__ import annotations
@@ -15,10 +15,13 @@ import numpy as np
 
 from .types import Detection
 
-# BGR colors (OpenCV). Dead tree = yellow, Flame = red, Smoke = orange.
-DEADTREE_COLOR = (0, 255, 255)
-FLAME_COLOR = (0, 0, 255)
-SMOKE_COLOR = (0, 165, 255)
+# BGR colors (OpenCV). Flame = red, Smoke = dark slate, Dead tree = bone white.
+# Smoke and dead tree used to be orange and yellow, only 1.48:1 apart and
+# indistinguishable to red-green colorblind eyes; slate vs bone is 3.42:1.
+# Keep in sync with KIND in console/static/console.js and :root in console.css.
+DEADTREE_COLOR = (176, 205, 217)  # #D9CDB0
+FLAME_COLOR = (85, 85, 224)       # #E05555
+SMOKE_COLOR = (122, 110, 84)      # #546E7A
 OTHER_COLOR = (0, 255, 0)
 
 COLOR_BY_DISPLAY = {
@@ -35,7 +38,7 @@ def _color_for(display: str) -> tuple[int, int, int]:
 
 
 def _text_color(box_color: tuple[int, int, int]) -> tuple[int, int, int]:
-    """Black text on light boxes (yellow), white on dark (red/orange)."""
+    """Black text on light boxes (bone), white on dark (red/slate)."""
     b, g, r = box_color
     luminance = 0.114 * b + 0.587 * g + 0.299 * r
     return (0, 0, 0) if luminance > 140 else (255, 255, 255)

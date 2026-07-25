@@ -161,6 +161,50 @@ Repo rule: commits carry no AI signature lines.
       the light schematic only where no tiles are cached (and says so). Verified on
       real data: zoom-16 imagery with visible forest, river and trails
 
+## Batch 14 - client review feedback (2026-07-23)
+
+- [x] **Hazard-type palette reworked for accessibility**: smoke orange `#F0A500`
+      and dead-tree yellow `#FFD700` were only 1.48:1 apart (WCAG 1.4.11 asks 3:1
+      for graphical objects) and collapse to the same color under red-green
+      colorblindness - the client could not tell them apart. Now flame red
+      `#E05555` / smoke slate `#546E7A` / dead tree bone `#D9CDB0`, 3.42:1 on the
+      pair that mattered. Rolled through all four definition sites (console.css
+      `:root`, console.js `KIND`, annotate.py BGR, report.py RGB) plus the legacy
+      Gradio annotator, and fixed a pre-existing drift where detail.html used
+      different shades (`#E53935`/`#FB8C00`) than everything else
+- [x] **Every hazard type now carries an icon** (flame / smoke puff / bare trunk)
+      on map pins, legends and badges, so type survives greyscale printing and any
+      color-vision deficiency - color is no longer the only channel (WCAG 1.4.1).
+      Icon pins are DOM markers, capped at 300 sites before falling back to canvas
+      circles so a huge flight cannot stall WebView2
+- [x] **Bone needs an outline**: at 1.58:1 against white it disappears on cards and
+      on paper, so thumbnails get an inset ring, map pins a white+dark double halo,
+      and the PDF picks the pin ring by fill luminance
+- [x] **Double-click a map pin to go fullscreen**: on the Map page the card fills
+      the window zoomed to that site (Esc or double-click to exit); on the Dashboard,
+      whose map is only 60% wide, it hands off to `/map?site=N&month=...` which opens
+      there focused. Leaflet's own double-click-to-zoom is disabled so the two
+      gestures stop fighting; a *Fullscreen* button makes the hidden gesture
+      discoverable. Verified against the real 14-site May flight
+
+## Batch 15 - report layout + scale (2026-07-23)
+
+- [x] **Report reordered to conclusions-first**: cover -> batch summary ->
+      full-page hazard map -> AI analysis -> imagery. Per-image material used to
+      sit in the middle, so a reader had to page past 30 photos to reach the
+      numbers and the map they opened the report for
+- [x] **One page per image replaced with a three-tier layout**: full detail pages
+      for the worst `report_detail_pages` (default 4), a gallery contact sheet at
+      8 per page for the rest of the top `report_max_image_pages`, and an index
+      table row for EVERY image. Measured on the real 58-image run: **33 pages ->
+      15**, and it now documents all 58 images instead of only 30
+- [x] **Hazard map promoted to its own landscape page** (9.4in wide). Squeezed
+      under the stats table it had ~2.9in of height and was unreadable; alone it
+      is the single most useful page for a crew deciding where to drive
+- [x] **Marker icon limit raised to 500** after measuring: 500 DOM icon pins build
+      in 24 ms and pan in 1 ms, and the canvas fallback still catches anything
+      bigger. A month can hold 10k+ photos, so 300 was too tight
+
 ## Waiting on external conditions
 
 - [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it

@@ -83,7 +83,9 @@ Review boxes (confirm/draw/delete)  →  Generate Report (PDF)  →  Map / Repor
    never overwritten; all PDFs are listed on the Reports page.
 5. **Overview** — Dashboard (stats, map, review backlog, training-set size),
    Review page (day-by-day backlog), Map page (site markers: flame red, smoke
-   orange, dead tree yellow; nearby images within 40 m merge into one site).
+   slate grey, dead tree bone white, each with its own icon; nearby images
+   within 40 m merge into one site). **Double-click a marker** to open the map
+   fullscreen zoomed to that site — or use the *Fullscreen* button; *Esc* exits.
 
 ## 5. Where your data lives
 

@@ -25,6 +25,20 @@
   --amber-text: #C88800;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
   --sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+
+  /* Hazard TYPE colors — a separate axis from the severity badges above.
+     Chosen for contrast, not decoration: smoke used to be #F0A500 against a
+     #FFD700 dead tree, only 1.48:1 apart (WCAG wants 3:1 for graphics) and
+     indistinguishable to red-green colorblind eyes. Smoke is now a dark slate
+     and dead tree a bone white, 3.42:1 apart. The slate is deliberately cool —
+     the console's own greys (--muted) are warm/olive, so a neutral grey would
+     read as "disabled". Every type also carries an icon, so color is never the
+     only channel. Keep in sync with KIND in console.js and annotate.py. */
+  --kind-flame: #E05555;
+  --kind-smoke: #546E7A;
+  --kind-deadtree: #D9CDB0;
+  /* Bone is 1.58:1 against a white card, so it always needs this outline. */
+  --kind-outline: #6b6459;
 }
 
 * { box-sizing: border-box; }
@@ -216,11 +230,25 @@ button { font-family: inherit; }
   transform: translate(-50%,-50%); animation: pulseRing 2.4s ease-out infinite; pointer-events: none;
 }
 .pin-dot {
-  position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; border-radius: 50%;
-  border: 3px solid #fff; transform: translate(-50%,-50%); transition: transform .15s;
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%,-50%); transition: transform .15s;
 }
 .pin:hover .pin-dot { transform: translate(-50%,-50%) scale(1.25); }
 .pin.selected .pin-dot { transform: translate(-50%,-50%) scale(1.3); }
+/* Site marker: hazard-type fill + icon. The double halo (white ring, dark
+   hairline outside it) is what lets the same pin read on the dark satellite
+   map AND on a white card — bone alone is 1.58:1 against white. */
+.site-pin {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 2px 6px rgba(0,0,0,.45);
+}
+.site-badge {
+  background: #fff; border-radius: 10px; padding: 1px 6px;
+  font: 600 10px var(--mono); box-shadow: 0 1px 3px rgba(0,0,0,.35);
+}
+.leaflet-marker-icon .site-pin { cursor: pointer; transition: transform .12s; }
+.leaflet-marker-icon:hover .site-pin { transform: scale(1.15); }
 .map-popup {
   position: absolute; width: 262px; background: #fff; border: 1px solid #e2e0d6;
   border-radius: 10px; padding: 13px; z-index: 10; box-shadow: 0 14px 36px rgba(20,20,15,.22);
@@ -229,11 +257,27 @@ button { font-family: inherit; }
   position: absolute; left: 50%; width: 12px; height: 12px; background: #fff;
   transform: translateX(-50%) rotate(45deg);
 }
-.legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .map-attr {
   position: absolute; bottom: 6px; right: 8px; font-size: 9px; color: var(--muted-3);
   font-family: var(--mono); background: rgba(0,0,0,.35); padding: 2px 6px; border-radius: 3px;
 }
+
+/* Fullscreen map — double-click a pin (or hit the button) to fill the window.
+   `position: fixed` escapes the page grid; the z-index sits above the sticky
+   top nav (z-index 40) but below the tile-download modal (1300). Leaflet's own
+   panes stay contained by .map-wrap's `isolation: isolate`. */
+.map-card.fs {
+  position: fixed; inset: 0; z-index: 1200; border-radius: 0; margin: 0;
+  height: 100vh; width: 100vw; max-width: none;
+}
+.map-card.fs .map-wrap { min-height: 0; }
+.fs-hint {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  background: rgba(20,20,15,.8); color: #f0efe8; font-size: 11px;
+  padding: 5px 12px; border-radius: 14px; pointer-events: none;
+  animation: fadeOut .4s ease-in 3.4s forwards;
+}
+@keyframes fadeOut { to { opacity: 0; } }
 
 /* ------------------------------------------------------------- detail page */
 .chip {
@@ -254,10 +298,11 @@ button { font-family: inherit; }
   border: 1px solid #d2d0c4; cursor: pointer; background: #e6e4da;
 }
 .thumb-wrap.sel .thumb { outline: 2px solid var(--green); outline-offset: 1px; }
-/* hazard-TYPE colors, matching the boxes and the map (not severity) */
-.thumb.k-flame    { border: 2px solid #E05555; }
-.thumb.k-smoke    { border: 2px solid #F0A500; }
-.thumb.k-deadtree { border: 2px solid #FFD700; }
+/* hazard-TYPE colors, matching the boxes and the map (not severity). The inset
+   ring keeps the bone dead-tree border visible against the white card. */
+.thumb.k-flame    { border: 2px solid var(--kind-flame); }
+.thumb.k-smoke    { border: 2px solid var(--kind-smoke); }
+.thumb.k-deadtree { border: 2px solid var(--kind-deadtree); box-shadow: 0 0 0 1px var(--kind-outline); }
 .thumb-check {
   position: absolute; top: -6px; right: -6px; width: 16px; height: 16px;
   border-radius: 50%; background: var(--green-2); color: #fff;

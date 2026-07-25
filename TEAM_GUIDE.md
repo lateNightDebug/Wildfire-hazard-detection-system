@@ -88,10 +88,13 @@ or the report simply omits the AI analysis section (everything else still works)
 3. **Review** — open the finished run → *✎ Review boxes*: zoom in, delete wrong
    boxes, draw missed ones, set labels → *Save review*. Use *Mark reviewed* per
    image to track progress (the green check on thumbnails).
-4. **Report** — *Generate Report* → a timestamped PDF with a satellite hazard map,
-   per-image pages, and the AI analysis.
+4. **Report** — *Generate Report* → a timestamped PDF that reads conclusions-first:
+   batch summary, a full-page satellite hazard map, the AI analysis, then the
+   imagery (full pages for the worst few, a gallery contact sheet for the rest,
+   and an index row for every image).
 5. **Overview** — Dashboard (stats + map), Review (backlog by day), Map (all sites),
-   Reports (all PDFs).
+   Reports (all PDFs). **Double-click any map pin** to open the map fullscreen on
+   that site; *Esc* exits.
 
 ## 6. Where everything lives
 
@@ -179,7 +182,7 @@ src/wildfire/
   gps.py            EXIF GPS, DJI RTK .MRK parsing, camera model
   annotate.py       draw_boxes(), grid_density_map()
   llm.py            LM Studio call + the report prompt
-  report.py         the PDF (cover, per-image pages, summary + satellite map)
+  report.py         the PDF (cover, summary + satellite map, then the imagery)
   cv_export.py      labels.json → Custom Vision dataset
 
 src/wildfire/console/     ← the app you see
@@ -222,7 +225,8 @@ photo on SD card
 | Add a new setting | Add the field to `Settings` in `config.py`, add it to both `config/settings*.json`, add it to `_EDITABLE_SETTINGS` in `server.py` and to the Settings page HTML + its `FIELDS` array |
 | Add a new API endpoint | `console/server.py`, inside `create_app()` |
 | Add a new detector type | Write a class with `.predict(image) -> list[Detection]`, register it in `detectors.py`, add a `model_sources` entry |
-| Change the PDF | `report.py` (`_cover`, `_image_page`, `_summary_page`) |
+| Change the PDF | `report.py` — sections in order: `_cover`, `_summary_page` (stats + hazard map + AI), `_image_page` (full page, worst few), `_gallery_pages` (contact sheet 8-up), `_image_index` (every image) |
+| Make reports shorter / longer | Settings page → *Images with imagery* and *Full-page images* |
 | Change the AI report wording | `llm.py` → `SYSTEM_PROMPT` |
 
 ## 13. Testing and committing

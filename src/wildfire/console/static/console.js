@@ -6,18 +6,60 @@ const SEV = {
   low:    { label: "Low",    color: "#3A9A3A" },
 };
 
-/* Hazard TYPE colors — same language as the annotation boxes: most detections
-   are dead trees (yellow); flame red and smoke orange stand out against them. */
+/* Hazard TYPE colors and icons — same language as the annotation boxes, and a
+   separate axis from the severity badges above.
+
+   Two channels, on purpose. COLOR carries the contrast: smoke used to be
+   #F0A500 against a #FFD700 dead tree, only 1.48:1 apart (WCAG 1.4.11 asks 3:1
+   for graphical objects) and near-identical under red-green colorblindness.
+   Slate vs bone is 3.42:1. ICON carries the recognition: a flame looks like
+   fire, a puff like smoke, a bare trunk like a dead tree — so the map is
+   readable without decoding the legend, and the type survives greyscale
+   printing and any color-vision deficiency.
+
+   Keep in sync with :root in console.css and the BGR constants in annotate.py.
+   `text` is the accessible on-white variant (bone is invisible as text);
+   `on` is the icon color to use when drawn ON TOP of the fill. */
 const KIND = {
-  flame:    { label: "Flame",     color: "#E05555" },
-  smoke:    { label: "Smoke",     color: "#F0A500" },
-  deadtree: { label: "Dead Tree", color: "#FFD700" },
+  flame: {
+    label: "Flame", color: "#E05555", text: "#C0392B", on: "#fff",
+    icon: "M12 2.5c.6 3.2-1.1 4.5-2.6 6C7.7 10.2 6.5 11.9 6.5 14a5.5 5.5 0 0 0 11 0c0-2.6-1.6-4.3-2.8-6.2-.5 1-1.2 1.6-2 2 .4-2.9-.4-5.6-1.2-7.3z",
+  },
+  smoke: {
+    label: "Smoke", color: "#546E7A", text: "#455A64", on: "#fff",
+    icon: "M7 18h10a3.5 3.5 0 0 0 .4-7A4.5 4.5 0 0 0 9 9.3 3.6 3.6 0 0 0 4 12.6 3.4 3.4 0 0 0 7 18z",
+  },
+  deadtree: {
+    label: "Dead Tree", color: "#D9CDB0", text: "#8a7c5c", on: "#5a5346",
+    icon: "M12 21V7m0 4 3.5-3.5M12 13l-3.6-3.6M12 9 9 6M12 7l3-3",
+  },
 };
 const kindOf = s => KIND[s.kind] || KIND.deadtree;
 
+/* Dead tree is drawn as strokes (bare branches), the other two as filled
+   silhouettes — a shape difference that survives being scaled down to 10px. */
+function kindIcon(kind, size = 13, color) {
+  const k = KIND[kind] || KIND.deadtree;
+  const c = color || k.color;
+  const paint = kind === "deadtree"
+    ? `fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"`
+    : `fill="${c}"`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" ${paint}
+            style="vertical-align:-2px; flex-shrink:0;"><path d="${k.icon}"></path></svg>`;
+}
+
 function kindBadge(kind) {
   const k = KIND[kind] || KIND.deadtree;
-  return `<span class="badge" style="color:${k.color}; background:${k.color}18; border:1px solid ${k.color}55;">${k.label.toUpperCase()}</span>`;
+  return `<span class="badge" style="color:${k.text}; background:${k.color}22; border:1px solid ${k.color};">`
+       + `${kindIcon(kind, 11, k.text)} ${k.label.toUpperCase()}</span>`;
+}
+
+/* Shared legend for the Dashboard and Map map cards — one definition, so the
+   two can no longer drift the way the hardcoded hex swatches did. */
+function kindLegendHtml() {
+  return Object.keys(KIND).map(k =>
+    `<span style="display:inline-flex; align-items:center; gap:4px;">${kindIcon(k, 13)} ${KIND[k].label}</span>`
+  ).join("");
 }
 
 const REVIEW_URL_FALLBACK = "http://127.0.0.1:7860";
@@ -187,6 +229,42 @@ function sitePopupHtml(s, i) {
     <div style="margin-top:8px; border-top:1px solid #eee; padding-top:6px;">${members}</div>`;
 }
 
+/* Icon pins are DOM elements (L.divIcon). Thousands of DOM markers would stall
+   WebView2 the same way SVG vector layers did, so past this many sites we drop
+   back to canvas circles — color only, no icon. The legend still shows icons.
+   500 is measured, not guessed: a month can hold 10k+ photos, and at 500 icon
+   pins first paint is still well under a second. Raise it only with numbers. */
+const MARKER_ICON_LIMIT = 500;
+
+function siteDivIcon(s) {
+  const k = kindOf(s);
+  const d = Math.round(22 + Math.min(s.count, 10) * 1.4);   // 22..36 px
+  const kind = KIND[s.kind] ? s.kind : "deadtree";
+  return L.divIcon({
+    className: "",   // Leaflet's default adds a white box
+    html: `<span class="site-pin" style="width:${d}px; height:${d}px; background:${k.color};">
+             ${kindIcon(kind, Math.round(d * 0.6), k.on)}
+           </span>`,
+    iconSize: [d, d], iconAnchor: [d / 2, d / 2], popupAnchor: [0, -d / 2 - 2],
+  });
+}
+
+/* Pins for the no-tiles stylized fallback map, shared by Dashboard and Map so
+   the two cannot drift apart. `p` comes from gpsToPercent(). */
+function fallbackPinHtml(p, selected) {
+  const k = kindOf(p);
+  const kind = KIND[p.kind] ? p.kind : "deadtree";
+  return `
+    <div class="pin ${selected ? "selected" : ""}" data-id="${esc(String(p.id))}"
+         style="left:${p.x}%; top:${p.y}%;" title="${esc(k.label)} — double-click to open">
+      <span class="pin-ring" style="background:${k.color};"></span>
+      <span class="site-pin pin-dot" style="width:22px; height:22px; background:${k.color};">
+        ${kindIcon(kind, 13, k.on)}
+      </span>
+      ${p.count > 1 ? `<span class="site-badge" style="position:absolute; left:14px; top:-10px;">${p.count}</span>` : ""}
+    </div>`;
+}
+
 function initLeafletSites(el, sites, info, opts = {}) {
   el.innerHTML = '<div style="position:absolute; inset:0; background:#161a1b;" class="leaflet-host"></div>';
   const map = L.map(el.querySelector(".leaflet-host"), {
@@ -211,16 +289,25 @@ function initLeafletSites(el, sites, info, opts = {}) {
       }).addTo(map);
     }).catch(() => {});
   }
+  /* Double-click is ours now (open / fullscreen), so Leaflet's own
+     double-click-to-zoom has to go or the two gestures fight over every pin.
+     Wheel and the zoom control still zoom. */
+  if (opts.onOpen) map.doubleClickZoom.disable();
+
+  const useIcons = sites.length <= MARKER_ICON_LIMIT;
   const markers = sites.map((s, i) => {
-    const c = kindOf(s).color;
-    const m = L.circleMarker([s.lat, s.lon], {
-      radius: 8 + Math.min(s.count, 10), color: "#fff", weight: 2,
-      fillColor: c, fillOpacity: .9,
-    }).addTo(map).bindPopup(sitePopupHtml(s, i));
+    const m = useIcons
+      ? L.marker([s.lat, s.lon], { icon: siteDivIcon(s), keyboard: false })
+      : L.circleMarker([s.lat, s.lon], {
+          radius: 8 + Math.min(s.count, 10), color: "#fff", weight: 2,
+          fillColor: kindOf(s).color, fillOpacity: .9,
+        });
+    m.addTo(map).bindPopup(sitePopupHtml(s, i));
     if (opts.onSelect) m.on("click", () => opts.onSelect(i));
+    if (opts.onOpen) m.on("dblclick", e => { L.DomEvent.stopPropagation(e); opts.onOpen(i); });
     return m;
   });
   if (sites.length) map.fitBounds(L.latLngBounds(sites.map(s => [s.lat, s.lon])).pad(0.25));
   else map.setView([51.1, -115.4], info.min_zoom || 10);
-  return { map, markers };
+  return { map, markers, useIcons };
 }

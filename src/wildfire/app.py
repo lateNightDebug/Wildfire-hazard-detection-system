@@ -34,7 +34,8 @@ from .models import ensure_yolo_sources
 from .pipeline import run_batch
 from .report import build_report, build_summary_text, timestamped_report_path
 from .review import (
-    REVIEW_LABELS, build_confirmed_from_annotations, save_review_labels, to_annotator,
+    REVIEW_COLORS, REVIEW_LABELS, build_confirmed_from_annotations,
+    save_review_labels, to_annotator,
 )
 
 _DETECTORS = None  # built lazily on first detection (keeps startup instant)
@@ -123,6 +124,7 @@ def generate_report_ui(ann_value, cur, ann, batch, progress=gr.Progress()):
     from .config import PROJECT_ROOT
     pdf = build_report(confirmed, timestamped_report_path(out_dir), ai_text=ai_text,
                        max_image_pages=settings.report_max_image_pages,
+                       detail_pages=settings.report_detail_pages,
                        map_dir=settings._resolve(settings.map_tiles_dir),
                        branding_dir=PROJECT_ROOT / "branding")
     n = confirmed.stats["total_detections"]
@@ -170,7 +172,7 @@ def build_ui():
                 annotator = image_annotator(
                     label="Review — draw / edit / delete boxes, set labels",
                     label_list=REVIEW_LABELS,
-                    label_colors=[(255, 215, 0), (229, 57, 53), (251, 140, 0), (124, 77, 255)],
+                    label_colors=[REVIEW_COLORS[k] for k in REVIEW_LABELS],
                     show_remove_button=True,
                     show_clear_button=True,
                     use_default_label=True,

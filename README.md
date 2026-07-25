@@ -19,7 +19,7 @@ satellite hazard map.
 - **Layer 1 — Detection**: drone images → optional pre-compression
   (`preprocess_max_mb`, resolution kept) → SAHI slicing (5280×3956 frames) →
   YOLO11 flame/smoke + DeepForest dead-tree proposals → annotated images
-  (dead tree = yellow, flame = red, smoke = orange) + grid density maps + GPS
+  (dead tree = bone, flame = red, smoke = slate) + grid density maps + GPS
   (DJI RTK **.MRK** beside the photos preferred — cm-grade — falling back to EXIF).
   Detection runs in a **low-priority worker process**, so the UI never blocks.
   No formal risk classification — detections are flagged with their GPS location.
@@ -29,9 +29,11 @@ satellite hazard map.
   and the **training set** for the custom model.
 - **Layer 2 — Report**: survey facts (flight metadata, densities, ranked hotspots) →
   LM Studio local LLM (graceful fallback when offline) → five-section professional
-  analysis → ReportLab PDF: cover, per-image pages (capped at the top
-  `report_max_image_pages` hazard images), and a summary page with a **real offline
-  satellite hazard map** stitched from the tile cache.
+  analysis → ReportLab PDF, ordered so the conclusions come before the evidence:
+  cover → batch summary → a full-page **real offline satellite hazard map** stitched
+  from the tile cache → AI analysis → full detail pages for the worst
+  `report_detail_pages` images → a gallery contact sheet (8 per page) for the rest
+  of the top `report_max_image_pages` → an index row for **every** image.
 
 > **Detection honesty:** RGB imagery physically cannot separate dead wood from bare
 > brown ground reliably — that signal lives in SWIR bands RGB cameras don't capture

@@ -121,6 +121,7 @@ def main() -> int:
         from src.wildfire.config import PROJECT_ROOT
         pdf = build_report(batch, timestamped_report_path(out_dir), ai_text=ai_text,
                            max_image_pages=settings.report_max_image_pages,
+                           detail_pages=settings.report_detail_pages,
                            map_dir=settings._resolve(settings.map_tiles_dir),
                            branding_dir=PROJECT_ROOT / "branding")
         print(f"  Wrote {pdf} ({pdf.stat().st_size // 1024} KB)")

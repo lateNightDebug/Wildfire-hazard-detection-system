@@ -130,7 +130,16 @@ let boxesByImage = {};   // imageIndex -> [{x1,y1,x2,y2,label}]
 let selBox = -1;
 let drawing = null;
 
-const LABEL_COLORS = { "Dead Tree": "#FFD700", "Flame": "#E53935", "Smoke": "#FB8C00", "Fallen Log": "#7C4DFF" };
+/* Review-editor box colors. These MUST match KIND in console.js and the BGR
+   constants in annotate.py — they drifted before (#E53935/#FB8C00 here vs
+   #E05555/#F0A500 everywhere else), so the drawn box and the saved annotation
+   disagreed on shade. Driven off KIND now; "Fallen Log" has no KIND entry. */
+const LABEL_COLORS = {
+  "Dead Tree": KIND.deadtree.color,
+  "Flame": KIND.flame.color,
+  "Smoke": KIND.smoke.color,
+  "Fallen Log": "#7C4DFF",
+};
 const SEV_NOTE = {
   high: "Flame detected or heavy dead-tree density. Immediate review recommended — dispatch field team to verify.",
   medium: "Smoke detected or elevated dead-tree density. Review the flagged images and verify on site.",

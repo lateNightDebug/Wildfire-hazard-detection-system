@@ -92,6 +92,8 @@ _EDITABLE_SETTINGS: dict = {
     "onnx_normalize": lambda v: v if v in ("0-255", "0-1", "imagenet") else "0-255",
     "onnx_channel_order": lambda v: v if v in ("RGB", "BGR") else "RGB",
     "onnx_nms_iou": lambda v: max(0.05, min(0.95, float(v))),
+    "report_max_image_pages": lambda v: max(1, min(500, int(v))),
+    "report_detail_pages": lambda v: max(0, min(100, int(v))),
 }
 
 
@@ -654,6 +656,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 job["stage"] = "building PDF"
                 pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text,
                                    max_image_pages=settings.report_max_image_pages,
+                                   detail_pages=settings.report_detail_pages,
                                    map_dir=settings._resolve(settings.map_tiles_dir),
                                    branding_dir=PROJECT_ROOT / "branding")
                 note = "" if reviewed else "Generated from UNREVIEWED proposals - confirm the boxes first for a reviewed report."

@@ -54,10 +54,7 @@
         <span class="card-title">Hazard Map</span>
         <span class="mono" style="font-size:11px; color:var(--muted-3);" id="pin-count">· 0 markers</span>
       </div>
-      <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);">
-        <span><span class="legend-dot" style="background:#E05555;"></span> Flame</span>
-        <span><span class="legend-dot" style="background:#F0A500;"></span> Smoke</span>
-        <span><span class="legend-dot" style="background:#FFD700;"></span> Dead Tree</span>
+      <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);" id="legend">
         <a class="link-green" href="/map" style="font-size:11px;">Open map →</a>
       </div>
     </div>
@@ -114,6 +111,7 @@
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script>
 renderNav("dashboard");
+document.getElementById("legend").insertAdjacentHTML("afterbegin", kindLegendHtml());
 let SUMMARY = null, INFO = null, SITES = [];
 let selectedPin = null;
 
@@ -126,20 +124,12 @@ function drawMap() {
   document.getElementById("pin-count").textContent =
     `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}${label}`;
   if (INFO && INFO.tiles) {
-    initLeafletSites(el, SITES, INFO, { overlays: false });
+    initLeafletSites(el, SITES, INFO, { overlays: false, onOpen: openFullMap });
     return;
   }
   const pins = gpsToPercent(SITES.map((s, i) => ({ ...s, id: String(i) })));
   let html = terrainSvg("wf") + '<div class="map-grid-overlay"></div>';
-  for (const p of pins) {
-    const c = kindOf(p).color;
-    html += `
-      <div class="pin ${selectedPin === p.id ? "selected" : ""}" data-id="${esc(p.id)}"
-           style="left:${p.x}%; top:${p.y}%;">
-        <span class="pin-ring" style="background:${c};"></span>
-        <span class="pin-dot" style="background:${c}; box-shadow:0 0 0 2px ${c}55, 0 2px 8px rgba(0,0,0,.55);"></span>
-      </div>`;
-  }
+  for (const p of pins) html += fallbackPinHtml(p, selectedPin === p.id);
   const sel = pins.find(p => p.id === selectedPin);
   if (sel) {
     const below = sel.y < 38;
@@ -160,6 +150,13 @@ function drawMap() {
   el.innerHTML = html;
 }
 
+/* Double-clicking a pin hands off to the Map page, which has room to go
+   fullscreen — this card is only 60% of the width, so blowing it up here would
+   just be a bigger cramped map. The Map page reads ?site= and opens focused. */
+function openFullMap(i) {
+  location.href = `/map?site=${i}&month=${encodeURIComponent(window.__mapMonth || "latest")}`;
+}
+
 // One delegated listener for the fallback mode only.
 document.getElementById("map").addEventListener("click", e => {
   if (INFO && INFO.tiles) return; // leaflet handles its own events
@@ -174,6 +171,12 @@ document.getElementById("map").addEventListener("click", e => {
     selectedPin = null;
   }
   drawMap();
+});
+
+document.getElementById("map").addEventListener("dblclick", e => {
+  if (INFO && INFO.tiles) return; // leaflet markers carry their own handler
+  const pinEl = e.target.closest(".pin");
+  if (pinEl) openFullMap(+pinEl.dataset.id);
 });
 
 function drawRecent() {

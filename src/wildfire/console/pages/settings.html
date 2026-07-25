@@ -117,6 +117,20 @@
           <label>Report language</label>
           <input class="input" id="language" type="text">
         </div>
+        <div class="form-row">
+          <label>Images with imagery</label>
+          <div>
+            <input class="input" id="report_max_image_pages" type="number" step="1" min="1" max="500">
+            <div class="hint">How many images appear as pictures at all, hazard-densest first. Every image is still listed in the Image Index at the end.</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Full-page images</label>
+          <div>
+            <input class="input" id="report_detail_pages" type="number" step="1" min="0" max="100">
+            <div class="hint">Of those, how many get a whole page (original + detections + density grid). The rest go on the gallery contact sheet, 8 per page.</div>
+          </div>
+        </div>
         <div style="display:flex; align-items:center; gap:10px;">
           <button id="lm-test" class="btn-quiet" style="padding:7px 12px;">Test connection</button>
           <span id="lm-status" style="font-size:12px; color:var(--muted-2);">Offline is fine — the PDF just skips the AI section.</span>
@@ -190,6 +204,7 @@ renderNav("settings");
 const FIELDS = ["operator_name", "conf_threshold", "slice_size", "overlap_ratio",
                 "preprocess_max_mb", "severity_deadtrees_high",
                 "severity_deadtrees_medium", "lmstudio_url", "lmstudio_model", "language",
+                "report_max_image_pages", "report_detail_pages",
                 "onnx_input_size", "onnx_normalize", "onnx_channel_order", "onnx_nms_iou",
                 "source_dir", "output_dir"];
 let MODELS = [];
