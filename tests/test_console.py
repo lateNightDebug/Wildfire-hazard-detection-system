@@ -374,6 +374,92 @@ def test_cluster_sites_dedups_nearby_images():
     assert len(near["members"]) == 2
 
 
+def test_cluster_sites_matches_the_naive_scan():
+    """The grid index must not change the answer, only the speed.
+
+    cluster_sites indexes sites into radius-sized cells; the obvious way to get
+    that wrong is to miss a match across a cell boundary, or to attach a point to
+    a later site when an earlier one also qualified. This pins the output against
+    a plain scan over several geometries, including the awkward ones.
+    """
+    import random
+
+    from src.wildfire.console.data import (KIND_ORDER, SEVERITY_ORDER,
+                                           _haversine_m, cluster_sites)
+
+    def naive(points, radius_m=40.0):
+        rank = dict(SEVERITY_ORDER)
+        sites = []
+        for p in points:
+            target = None
+            for s in sites:  # first site in range wins, same as cluster_sites
+                if _haversine_m(p["lat"], p["lon"], s["lat"], s["lon"]) <= radius_m:
+                    target = s
+                    break
+            if target is None:
+                sites.append({"lat": p["lat"], "lon": p["lon"], "severity": p["severity"],
+                              "kind": p.get("kind", "deadtree"), "count": 0, "members": []})
+                target = sites[-1]
+            n = target["count"]
+            target["lat"] = (target["lat"] * n + p["lat"]) / (n + 1)
+            target["lon"] = (target["lon"] * n + p["lon"]) / (n + 1)
+            target["count"] = n + 1
+            if rank.get(p["severity"], 0) > rank.get(target["severity"], 0):
+                target["severity"] = p["severity"]
+            if KIND_ORDER.get(p.get("kind"), 0) > KIND_ORDER.get(target["kind"], 0):
+                target["kind"] = p["kind"]
+            target["members"].append({k: p[k] for k in ("run_id", "name", "severity", "thumb")
+                                      if k in p})
+        return sites
+
+    # (label, count, degrees of spread, origin) - spread 0 means every point
+    # identical; a big spread means nothing merges; high latitude stretches the
+    # longitude cells; near 0 and near 180 sit on coordinate sign flips.
+    cases = [
+        ("dense overlap", 250, 0.001, (51.10, -115.40)),
+        ("normal flight", 400, 0.02, (51.10, -115.40)),
+        ("nothing merges", 300, 0.30, (51.10, -115.40)),
+        ("all identical", 120, 0.0, (51.10, -115.40)),
+        ("high latitude", 300, 0.02, (78.00, -115.40)),
+        ("across equator", 300, 0.05, (-0.02, -115.40)),
+        ("near antimeridian", 300, 0.05, (51.10, 179.98)),
+    ]
+    for label, n, spread, (lat0, lon0) in cases:
+        rnd = random.Random(hash(label) & 0xFFFF)
+        pts = [{"lat": lat0 + rnd.random() * spread, "lon": lon0 + rnd.random() * spread,
+                "severity": rnd.choice(["high", "medium", "low"]),
+                "kind": rnd.choice(["deadtree", "smoke", "flame"]),
+                "run_id": f"r{i % 5}", "name": f"IMG_{i}.JPG", "thumb": None}
+               for i in range(n)]
+        assert cluster_sites([dict(p) for p in pts]) == naive([dict(p) for p in pts]), label
+
+    assert cluster_sites([]) == []
+
+
+def test_cluster_sites_stays_fast_at_scale():
+    """A month can hold 10k+ photos and this runs inside a web request.
+
+    The original nested scan took 7.5 s for 10k points, which froze the desktop
+    window. Budget is deliberately loose (2 s vs the ~0.05 s measured) so the test
+    reports an algorithmic regression, not CI jitter.
+    """
+    import random
+    import time
+
+    from src.wildfire.console.data import cluster_sites
+
+    rnd = random.Random(99)
+    pts = [{"lat": 51.10 + rnd.random() * 0.046, "lon": -115.40 + rnd.random() * 0.046,
+            "severity": "low", "kind": "deadtree",
+            "run_id": "r", "name": f"IMG_{i}.JPG", "thumb": None}
+           for i in range(10000)]
+    t0 = time.perf_counter()
+    sites = cluster_sites(pts)
+    elapsed = time.perf_counter() - t0
+    assert len(sites) > 1000  # sanity: it really did cluster something
+    assert elapsed < 2.0, f"cluster_sites took {elapsed:.2f}s for 10k points"
+
+
 def test_detection_source_compresses_oversized(tmp_path):
     from src.wildfire.pipeline import _detection_source
 

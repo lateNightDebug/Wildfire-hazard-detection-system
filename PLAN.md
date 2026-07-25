@@ -205,6 +205,28 @@ Repo rule: commits carry no AI signature lines.
       in 24 ms and pan in 1 ms, and the canvas fallback still catches anything
       bigger. A month can hold 10k+ photos, so 300 was too tight
 
+## Batch 16 - scale fix + the first frontend guard (2026-07-25)
+
+- [x] **cluster_sites no longer freezes the window on a big month**: it compared
+      every point against every existing site, which is fine for a 60-photo run
+      and 7.5 s for a 10k-photo month - inside a web request. Sites are now
+      indexed into a grid of radius-sized cells so each point only checks the 3x3
+      cells that could hold a match. **7.47 s -> 0.045 s (166x)** at 10k points,
+      20k in 0.08 s. Output is byte-identical: a test pins it against the old
+      linear scan across seven geometries (dense overlap, nothing merging, all
+      points identical, high latitude, across the equator, near the antimeridian)
+- [x] **First test coverage of the frontend contract** (`test_frontend_contract.py`,
+      16 tests). The console has no build step, so renaming a helper in console.js
+      passed all 72 tests and broke the page at runtime. These parse each page's
+      inline JS and assert every function it calls is defined somewhere - by the
+      page, by console.js, or by the browser - plus that pages load console.js
+      before their own script, and that no page reintroduces a retired hazard hex.
+      Verified by mutation: renaming a helper, reintroducing #FFD700, and deleting
+      a page each turn the suite red
+- [x] **Caught a real leftover while writing it**: `detail.html` still fell back to
+      the retired `#FFD700` for unknown labels; now falls back to `KIND.deadtree.color`
+- [x] Suite: **72 -> 90 tests**, all green
+
 ## Waiting on external conditions
 
 - [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it

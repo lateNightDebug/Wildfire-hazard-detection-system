@@ -177,6 +177,25 @@ outputs/<run>_<timestamp>/
   layout makes it 15 and covers all 58 instead of 30.
 - **LLM input is bounded**: aggregate stats + top-15 hotspots, independent of
   flight size. Do not feed per-image data for every image.
+- **The frontend is deliberately a plain multi-page app with no build step.**
+  One HTML file per page, one shared `console.js`, no framework, no bundler, no
+  npm. This is a choice, not a gap:
+  - `install.bat` only needs Python. Adding React would mean shipping a Node
+    toolchain to a field laptop, or committing build output nobody can review.
+  - Pages are read from disk per request, so editing HTML and refreshing shows
+    the change immediately (this is also why rule 5 exists for Python).
+  - It is not slow. Measured on this machine: a warm page navigation completes
+    in **19 ms**, a cold one in 564 ms, total payload ~50 KB. A React SPA would
+    trade a slower first load for faster route changes we do not need in a
+    six-page tool an operator sits in for minutes at a time.
+
+  What the design genuinely costs, and what covers it: nothing binds the pieces
+  together at build time, so a broken reference only surfaces when a human opens
+  that page. Page *files* are covered -- `test_api_endpoints` asserts all seven
+  routes return 200, so deleting `map.html` turns the suite red. Page *contents*
+  are not: no test loads `console.js` or parses any HTML, so renaming a shared
+  helper still passes all 72 tests and breaks the UI at runtime. Grep for a
+  helper's name across `pages/` before renaming or deleting it.
 
 ---
 
@@ -201,6 +220,11 @@ outputs/<run>_<timestamp>/
    share a stem and silently overwrote each other.
 9. **Large flights expose everything.** 100+ images surfaces bugs that 6 images
    never will (thumbnail loads, report time, layout overflow). Test at scale.
+10. **A month is not a flight.** Map and dashboard queries span every run in a
+    period, and one month of real flying held 10k+ photos. `cluster_sites` was
+    O(n * sites) and took 7.5 s at that size -- inside a web request, so the
+    window froze. It is grid-indexed now; keep any new geo work off nested
+    scans, and size test data by the MONTH, not by one 60-photo run.
 
 ---
 

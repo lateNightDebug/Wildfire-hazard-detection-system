@@ -1,0 +1,216 @@
+"""Guard the seam between the pages and their shared JavaScript.
+
+The console is a plain multi-page app with no build step, so nothing checks that
+`pages/*.html` and `static/console.js` still agree. Renaming a shared helper
+passes every other test and breaks the page at runtime, in front of the operator.
+These tests make that a red suite instead.
+
+They are deliberately textual: parsing JS properly would need a real parser, and
+the failure mode worth catching (a helper that no longer exists) is visible in
+the source text.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+CONSOLE = Path(__file__).resolve().parents[1] / "src" / "wildfire" / "console"
+PAGES = CONSOLE / "pages"
+SHARED_JS = CONSOLE / "static" / "console.js"
+
+# Names the browser or Leaflet provides. Anything here is not our contract.
+_PROVIDED = {
+    # language
+    "Array", "Boolean", "Date", "Error", "Function", "Infinity", "JSON", "Map",
+    "Math", "NaN", "Number", "Object", "Promise", "Proxy", "RegExp", "Set",
+    "String", "Symbol", "WeakMap", "decodeURI", "decodeURIComponent",
+    "encodeURI", "encodeURIComponent", "isFinite", "isNaN", "parseFloat",
+    "parseInt", "structuredClone",
+    # DOM / BOM
+    "Blob", "CustomEvent", "Event", "File", "FileReader", "FormData",
+    "Headers", "Image", "IntersectionObserver", "KeyboardEvent", "MouseEvent",
+    "MutationObserver", "Request", "Response", "ResizeObserver", "URL",
+    "URLSearchParams", "WebSocket", "XMLHttpRequest", "alert", "atob", "btoa",
+    "cancelAnimationFrame", "clearInterval", "clearTimeout", "close", "confirm",
+    "console", "document", "fetch", "getComputedStyle", "history", "localStorage",
+    "location", "matchMedia", "navigator", "open", "performance", "prompt",
+    "queueMicrotask", "requestAnimationFrame", "screen", "scrollTo",
+    "sessionStorage", "setInterval", "setTimeout", "window",
+    # Leaflet's single global
+    "L",
+}
+
+# Statement keywords that the "identifier followed by (" regex would otherwise
+# mistake for function calls.
+_KEYWORDS = {
+    "async", "await", "case", "catch", "class", "const", "delete", "do", "else",
+    "for", "function", "if", "in", "instanceof", "let", "new", "of", "return",
+    "super", "switch", "this", "throw", "typeof", "var", "void", "while", "with",
+    "yield",
+}
+
+_CALL = re.compile(r"(?<![.\w$'\"])([A-Za-z_$][\w$]*)\s*\(")
+_DEF_FUNC = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)")
+_DEF_BIND = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)")
+_DEF_CLASS = re.compile(r"\bclass\s+([A-Za-z_$][\w$]*)")
+_PARAMS = re.compile(r"(?:function\s*[\w$]*\s*\(([^)]*)\)|\(([^)]*)\)\s*=>|([\w$]+)\s*=>)")
+_SCRIPT = re.compile(r"<script\b[^>]*>(.*?)</script>", re.S | re.I)
+
+
+def _strip_comments(js: str) -> str:
+    js = re.sub(r"/\*.*?\*/", " ", js, flags=re.S)
+    return re.sub(r"(?m)^\s*//.*$", " ", js)
+
+
+def _blank_strings(js: str) -> str:
+    """Blank string literals, keeping `${...}` interpolations.
+
+    The pages build HTML in template literals full of inline CSS, so a raw scan
+    reads `calc(`, `minmax(` and `translate(` as calls to undefined functions.
+    The interpolations are the opposite - they hold the real helper calls - so
+    those are kept and recursed into for nested templates.
+
+    Only used for finding calls, never for finding definitions: an unbalanced
+    quote inside a regex literal can only blank out real code here, which makes
+    the guard miss something rather than fail on something valid.
+    """
+    out: list[str] = []
+    i, n = 0, len(js)
+    while i < n:
+        c = js[i]
+        if c in "'\"":
+            i += 1
+            while i < n and js[i] != c:
+                i += 2 if js[i] == "\\" else 1
+            i += 1
+            out.append(" ")
+        elif c == "`":
+            i += 1
+            while i < n and js[i] != "`":
+                if js[i] == "\\":
+                    i += 2
+                elif js[i] == "$" and i + 1 < n and js[i + 1] == "{":
+                    i += 2
+                    start, depth = i, 1
+                    while i < n and depth:
+                        if js[i] == "{":
+                            depth += 1
+                        elif js[i] == "}":
+                            depth -= 1
+                        i += 1
+                    out.append(" " + _blank_strings(js[start:i - 1]) + " ")
+                else:
+                    i += 1
+            i += 1
+            out.append(" ")
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def _called_in(js: str) -> set[str]:
+    """Names invoked as plain functions, ignoring method calls and keywords."""
+    code = _blank_strings(_strip_comments(js))
+    return {n for n in _CALL.findall(code) if n not in _KEYWORDS}
+
+
+def _defined_in(js: str) -> set[str]:
+    """Every name bound in this source: declarations plus function parameters."""
+    js = _strip_comments(js)
+    names = set(_DEF_FUNC.findall(js)) | set(_DEF_BIND.findall(js)) | set(_DEF_CLASS.findall(js))
+    for groups in _PARAMS.findall(js):
+        for group in groups:
+            for part in group.split(","):
+                # Strip defaults, destructuring braces, rest dots, and any
+                # bracket left over from a nested call such as
+                # `new Promise((resolve, reject) => ...)`.
+                part = part.split("=")[0].strip(" \t\n()[]{}").lstrip(".").strip()
+                if re.fullmatch(r"[A-Za-z_$][\w$]*", part):
+                    names.add(part)
+    return names
+
+
+def _inline_js(html: str) -> str:
+    """Only the page's own script blocks - <script src=...> bodies are empty."""
+    return "\n".join(_SCRIPT.findall(html))
+
+
+def _pages() -> list[Path]:
+    return sorted(PAGES.glob("*.html"))
+
+
+def test_pages_exist():
+    names = {p.name for p in _pages()}
+    assert {"dashboard.html", "scans.html", "detail.html",
+            "review.html", "map.html", "reports.html", "settings.html"} <= names
+    assert SHARED_JS.exists()
+
+
+@pytest.mark.parametrize("page", _pages(), ids=lambda p: p.name)
+def test_page_only_calls_helpers_that_exist(page: Path):
+    """Every function a page calls is defined - by itself, by console.js, or by
+    the browser. This is what catches a renamed or deleted shared helper."""
+    html = page.read_text(encoding="utf-8")
+    shared = _defined_in(SHARED_JS.read_text(encoding="utf-8"))
+    local = _defined_in(_inline_js(html))
+    missing = sorted(_called_in(_inline_js(html)) - local - shared - _PROVIDED)
+    assert not missing, (
+        f"{page.name} calls {missing}, which nothing defines. "
+        f"If a helper in console.js was renamed, update the page too."
+    )
+
+
+@pytest.mark.parametrize("page", _pages(), ids=lambda p: p.name)
+def test_page_loads_the_shared_script_when_it_uses_it(page: Path):
+    """A page that relies on console.js must actually pull it in, and before its
+    own inline script - the helpers are plain globals, not modules."""
+    html = page.read_text(encoding="utf-8")
+    shared = _defined_in(SHARED_JS.read_text(encoding="utf-8"))
+    used = _called_in(_inline_js(html)) & shared
+    if not used:
+        pytest.skip("page does not use the shared helpers")
+    tag = html.find("/static/console.js")
+    assert tag != -1, f"{page.name} uses {sorted(used)} but never loads console.js"
+    first_inline = next((m.start() for m in _SCRIPT.finditer(html)
+                         if m.group(1).strip()), len(html))
+    assert tag < first_inline, f"{page.name} loads console.js after its own script"
+
+
+def test_hazard_colour_helpers_are_still_wired_up():
+    """The hazard-type helpers are what this file mainly exists to protect.
+
+    Colours and icons live in ONE place (KIND in console.js) precisely because
+    they had already drifted - detail.html was drawing boxes in a different shade
+    than the map. If a page stops routing through these helpers and hardcodes a
+    hex value again, that drift is back and no other test would notice.
+    """
+    shared_src = SHARED_JS.read_text(encoding="utf-8")
+    pages_js = "\n".join(_inline_js(p.read_text(encoding="utf-8")) for p in _pages())
+    everything = shared_src + "\n" + pages_js
+    for helper in ("kindIcon", "kindBadge", "kindLegendHtml",
+                   "fallbackPinHtml", "siteDivIcon", "initLeafletSites"):
+        assert helper in _defined_in(shared_src), f"{helper} is gone from console.js"
+        assert len(re.findall(rf"\b{helper}\s*\(", everything)) > 1, \
+            f"{helper} is defined but never called - dead helper?"
+
+    # The retired hazard-TYPE palette must not creep back into a page. Note
+    # #F0A500 is deliberately absent from this list: it is still --amber, the
+    # medium-SEVERITY colour, which is a separate axis and legitimately appears
+    # as a UI accent.
+    retired = {"#FFD700": "old dead-tree yellow",
+               "#FB8C00": "detail.html's drifted smoke orange",
+               "#E53935": "detail.html's drifted flame red"}
+    for page in _pages():
+        # Comments are exempt: the code comments explaining WHY these values were
+        # retired necessarily quote them.
+        text = _strip_comments(re.sub(r"<!--.*?-->", " ", page.read_text(encoding="utf-8"),
+                                      flags=re.S))
+        for hexval, what in retired.items():
+            assert hexval not in text, (
+                f"{page.name} reintroduces {hexval} ({what}); hazard-type colours "
+                f"belong in KIND in console.js and :root in console.css, not in a page"
+            )

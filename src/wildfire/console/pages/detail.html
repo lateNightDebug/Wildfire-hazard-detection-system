@@ -231,7 +231,7 @@ function overlaySvg(im) {
   const fontPx = Math.max(15, W / 70);
   let inner = "";
   boxes.forEach((b, i) => {
-    const c = LABEL_COLORS[b.label] || "#FFD700";
+    const c = LABEL_COLORS[b.label] || KIND.deadtree.color;
     inner += `<rect class="box ${i === selBox ? "sel" : ""}" data-bi="${i}" x="${b.x1}" y="${b.y1}"
       width="${b.x2 - b.x1}" height="${b.y2 - b.y1}" stroke="${c}" style="stroke-width:${i === selBox ? strokePx * 1.5 : strokePx}"></rect>
       <text x="${b.x1 + 4}" y="${Math.max(b.y1 - 8, fontPx)}" style="font-size:${fontPx}px">${esc(b.label)}</text>`;

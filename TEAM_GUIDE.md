@@ -232,14 +232,67 @@ photo on SD card
 ## 13. Testing and committing
 
 ```bash
-.venv\Scripts\python.exe -m pytest -q        # 72 tests, must stay green
+.venv\Scripts\python.exe -m pytest -q        # 90 tests, must stay green
 ```
+
+`tests/test_frontend_contract.py` is the one to know about. The console has no
+build step, so nothing normally notices when a page and `console.js` stop
+agreeing — renaming a shared helper used to pass every test and break the page in
+front of the operator. These tests read each page's inline JS and check that every
+function it calls actually exists. **If they fail after you rename something in
+`console.js`, the fix is to update the pages that call it, not to loosen the test.**
 
 **Commit rules for this repo:**
 - **No AI signatures / "Co-Authored-By" lines** in commit messages (we work with
   multiple AI tools; per-model footers make the history confusing).
 - Write what changed and *why*, not just what.
 - Keep tests green before pushing.
+
+## 13b. Working in parallel (several people, several branches)
+
+Everyone works on their own branch and nobody merges into `main` without saying so
+first — a surprise merge interrupts whoever is mid-change.
+
+**Agree on formatting, or every merge becomes a fight.** A branch once arrived with
+438 changed lines in `dashboard.html` of which exactly **one** was a real edit; the
+other 437 were an editor's auto-format (single-line SVGs split across lines, spaces
+added inside CSS). That is invisible in the browser and enormous in a diff, and it
+buries the real change. Two habits fix it:
+
+- Keep auto-format **off** for files you are not otherwise changing, or agree on one
+  shared config (`.editorconfig` / `.prettierrc`) so everyone produces the same bytes.
+- If you do want to reformat, put it in **its own commit** with nothing else in it.
+  A reviewer can then skip it in one glance instead of reading 437 lines.
+
+**Reading a diff that looks huge?** Check whether it is real before panicking:
+
+```bash
+git diff -w --ignore-blank-lines origin/main...their-branch -- path/to/file
+```
+
+If that comes back nearly empty, the change is cosmetic.
+
+**Reviewing someone else's branch locally.** Stop the server, `git switch`, restart it
+— and then **hard-refresh the browser** (Ctrl+Shift+R). `/static` is served with
+strong caching, so otherwise you get a mix: their HTML with your cached `console.js`,
+which shows a UI that exists on no branch at all. This has already caused one round of
+confusion.
+
+**Delete branches once they are merged.** A merged branch that stays on the remote
+looks like unfinished work to everyone else.
+
+**Two open questions the team should settle explicitly** (they are product decisions,
+not code problems):
+
+1. `UI/` is a separate Tkinter prototype with login screens and Admin/Pilot roles,
+   merged into `main` early on. The shipped product has **no account system** by
+   design (single-operator offline tool, see the hard rules in `AGENTS.md`). Decide
+   whether `UI/` is a discarded sketch or a direction — and if it is a sketch, say so
+   before a demo, because opening it contradicts how we describe the product.
+2. Anything branded "cloud deployment" needs to state which side of the line it is on.
+   Cloud for **training** (Azure Custom Vision) is part of the design; moving the
+   **running app** to the cloud breaks the offline-first requirement the whole product
+   rests on. Cheapest to ask at the start of that work, not the end.
 
 ## 14. Gotchas (things that already bit us)
 
