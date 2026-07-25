@@ -36,22 +36,31 @@
       <p class="sub" id="d-sub"></p>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:11px;" id="d-chips"></div>
     </div>
-    <div style="display:flex; gap:10px;">
-      <button id="d-edit" class="btn btn-outline">✎ Review boxes</button>
-      <button id="d-report" class="btn btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 15h6M9 11h2"></path></svg>
-        Generate Report
-      </button>
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+      <div style="display:flex; gap:10px;">
+        <button id="d-edit" class="btn btn-outline">✎ Review boxes</button>
+        <button id="d-upload" class="btn btn-outline" style="display:none;">☁ Sync to cloud</button>
+        <button id="d-report" class="btn btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 15h6M9 11h2"></path></svg>
+          Generate Report
+        </button>
+      </div>
+      <span class="mono" id="d-cloud-status" style="font-size:11px; color:var(--muted-3);"></span>
     </div>
   </div>
 
   <div style="display:grid; grid-template-columns:1fr 360px; gap:16px;">
-    <!-- left: viewer / editor -->
-    <div style="display:flex; flex-direction:column; gap:16px;">
+    <!-- left: viewer / editor. min-width:0 lets the column shrink so the
+         thumbnail strip scrolls inside its card instead of stretching the page. -->
+    <div style="display:flex; flex-direction:column; gap:16px; min-width:0;">
       <div class="card" style="overflow:hidden;">
         <div class="card-head" style="padding:13px 16px;">
-          <span class="card-title" id="viewer-title">Detection Preview</span>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="card-title" id="viewer-title">Detection Preview</span>
+            <span class="mono" style="font-size:11px; color:var(--muted-3);" id="review-progress"></span>
+          </div>
           <div style="display:flex; align-items:center; gap:12px;">
+            <button id="mark-reviewed" class="btn-quiet" style="padding:5px 11px; font-size:12px;">&#10003; Mark reviewed</button>
             <div class="view-toggle" id="view-toggle">
               <button data-v="annotated" class="on">Annotated</button>
               <button data-v="original">Original</button>
@@ -182,10 +191,12 @@ previewEl.addEventListener("pointermove", e => {
 previewEl.addEventListener("pointerup", () => { panning = null; });
 previewEl.addEventListener("dblclick", resetZoom);
 
-function imgSeverity(im) {
-  if ((im.counts || {})["Flame"]) return "high";
-  if ((im.counts || {})["Smoke"]) return "medium";
-  if (Object.values(im.counts || {}).reduce((a, b) => a + b, 0)) return "low";
+// Hazard TYPE of an image (for thumbnail border color) — same language as the
+// detection boxes and the map: flame > smoke > dead tree.
+function imgKind(im) {
+  if ((im.counts || {})["Flame"]) return "flame";
+  if ((im.counts || {})["Smoke"]) return "smoke";
+  if (Object.values(im.counts || {}).reduce((a, b) => a + b, 0)) return "deadtree";
   return null;
 }
 
@@ -246,12 +257,15 @@ function drawPreview() {
     : `<span class="mono" style="color:#cdd6c0; opacity:.5; font-size:12px;">${esc(im.error || "image unavailable")}</span>`;
   document.getElementById("preview-name").textContent = `${im.name} · ${curImage + 1} / ${ims.length}`;
   document.getElementById("thumbs").innerHTML = ims.map((t, i) => {
-    const sev = imgSeverity(t);
-    const cls = ["thumb", i === curImage ? "sel" : "", sev ? "b-" + sev : ""].join(" ");
-    // Server-side small thumbs + lazy loading: a 250-image strip must not pull
-    // 250 full-resolution annotated JPEGs into the page.
+    const kind = imgKind(t);
+    // Server-side small thumbs + lazy loading: a 100-image strip must not pull
+    // 100 full-resolution annotated JPEGs into the page.
     const src = `/api/run-thumb/${encodeURIComponent(RUN_ID)}/${encodeURIComponent(t.name)}`;
-    return `<img class="${cls}" loading="lazy" src="${src}" data-i="${i}" title="${esc(t.name)}">`;
+    // Check only images the operator explicitly marked reviewed (not auto).
+    const check = t.reviewed_by_user ? '<span class="thumb-check">&#10003;</span>' : "";
+    return `<div class="thumb-wrap ${i === curImage ? "sel" : ""}" data-i="${i}" title="${esc(t.name)}">
+              <img class="thumb ${kind ? "k-" + kind : ""}" loading="lazy" src="${src}" alt="${esc(t.name)}">${check}
+            </div>`;
   }).join("");
   document.querySelectorAll("#thumbs [data-i]").forEach(el =>
     el.addEventListener("click", () => {
@@ -260,7 +274,45 @@ function drawPreview() {
     }));
   applyZoom();  // innerHTML replaced the stage — restore the current transform
   if (EDIT) wireOverlay();
+  drawReviewControls();
 }
+
+/* Per-image review check — an explicit operator action, persisted server-side. */
+function drawReviewControls() {
+  const ims = DETAIL.images_detail;
+  const btn = document.getElementById("mark-reviewed");
+  const done = ims.filter(i => i.reviewed_by_user).length;
+  document.getElementById("review-progress").textContent =
+    ims.length ? `reviewed ${done} / ${ims.length}` : "";
+  if (!ims.length) { btn.style.display = "none"; return; }
+  btn.style.display = "";
+  const on = !!ims[curImage].reviewed_by_user;
+  btn.innerHTML = on ? "&#10003; Reviewed &middot; undo" : "&#10003; Mark reviewed";
+  btn.style.background = on ? "var(--green-bg)" : "";
+  btn.style.color = on ? "var(--green)" : "";
+  btn.style.borderColor = on ? "var(--green-line)" : "";
+}
+
+document.getElementById("mark-reviewed").addEventListener("click", async () => {
+  const ims = DETAIL.images_detail;
+  if (!ims.length) return;
+  const im = ims[curImage];
+  const next = !im.reviewed_by_user;
+  const btn = document.getElementById("mark-reviewed");
+  btn.disabled = true;
+  try {
+    await api(`/api/scans/${encodeURIComponent(RUN_ID)}/image-reviewed`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: im.name, reviewed: next }),
+    });
+    im.reviewed_by_user = next;   // local update — no full reload
+    drawPreview();
+  } catch (e) {
+    toast("Could not update review state: " + e.message, 6000);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 /* ------------------------------------------------------------- editor wiring */
 function svgPoint(svg, ev) {
@@ -482,6 +534,7 @@ function drawSession() {
   const bi = DETAIL.batch_info || {};
   const kv = (k, v) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
   document.getElementById("session-rows").innerHTML = [
+    ...(bi.operator ? [kv("Operator", bi.operator)] : []),
     kv("Drone / camera", DETAIL.drone || "not in EXIF"),
     kv("GPS", DETAIL.gps ? fmtCoord(DETAIL.gps[0], DETAIL.gps[1]) : "not embedded"),
     kv("Images", DETAIL.images),
@@ -520,22 +573,79 @@ document.getElementById("view-toggle").addEventListener("click", e => {
   drawPreview();
 });
 
+const REPORT_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 15h6M9 11h2"></path></svg>';
+
 document.getElementById("d-report").addEventListener("click", async () => {
   const btn = document.getElementById("d-report");
-  btn.disabled = true; btn.textContent = "Generating…";
+  btn.disabled = true; btn.textContent = "Starting…";
   try {
-    const res = await api(`/api/scans/${encodeURIComponent(RUN_ID)}/report`, { method: "POST" });
-    if (res.note) toast(res.note, 8000);
-    DETAIL.report_url = res.report_url;
+    // Report runs in a background thread; poll status so a big flight cannot
+    // freeze the window (100-image reports used to hang the app).
+    await api(`/api/scans/${encodeURIComponent(RUN_ID)}/report`, { method: "POST" });
+    const done = await new Promise((resolve, reject) => {
+      const timer = setInterval(async () => {
+        let s;
+        try { s = await api(`/api/scans/${encodeURIComponent(RUN_ID)}/report/status`); }
+        catch (e) { return; }  // transient, keep polling
+        if (s.stage) btn.textContent = s.stage + "…";
+        if (s.state === "done") { clearInterval(timer); resolve(s); }
+        if (s.state === "error") { clearInterval(timer); reject(new Error(s.error || "failed")); }
+      }, 1200);
+    });
+    if (done.note) toast(done.note, 8000);
+    DETAIL.report_url = done.report_url;
     drawSession();
-    if (res.report_url) window.open(res.report_url, "_blank");
+    if (done.report_url) window.open(done.report_url, "_blank");
   } catch (e) {
     toast("Report failed: " + e.message, 8000);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 15h6M9 11h2"></path></svg> Generate Report';
+    btn.innerHTML = REPORT_ICON + " Generate Report";
   }
 });
+
+function paintCloudStatus(s) {
+  const el = document.getElementById("d-cloud-status");
+  if (!s || s.state === "idle" || s.synced === false) { el.textContent = "Not synced yet"; return; }
+  if (s.state === "running") { el.textContent = `Syncing… ${s.done || 0}/${s.total || "?"}`; return; }
+  if (s.state === "error") { el.textContent = "Sync failed: " + (s.error || ""); return; }
+  const when = s.synced_at || "";
+  el.textContent = when ? `Synced to cloud · ${when}` : "Synced to cloud";
+}
+
+document.getElementById("d-upload").addEventListener("click", async () => {
+  const btn = document.getElementById("d-upload");
+  btn.disabled = true; btn.textContent = "Syncing…";
+  try {
+    await api(`/api/scans/${encodeURIComponent(RUN_ID)}/upload`, { method: "POST" });
+    const done = await new Promise((resolve, reject) => {
+      const timer = setInterval(async () => {
+        let s;
+        try { s = await api(`/api/scans/${encodeURIComponent(RUN_ID)}/upload/status`); }
+        catch (e) { return; }  // transient, keep polling
+        paintCloudStatus(s);
+        if (s.state === "done") { clearInterval(timer); resolve(s); }
+        if (s.state === "error") { clearInterval(timer); reject(new Error(s.error || "failed")); }
+      }, 1000);
+    });
+    const parts = [];
+    if (done.uploaded) parts.push(`${done.uploaded} uploaded`);
+    if (done.skipped) parts.push(`${done.skipped} unchanged`);
+    if (done.failed) parts.push(`${done.failed} failed`);
+    toast(`Cloud sync complete — ${parts.join(", ") || "nothing to do"}.`, 6000);
+  } catch (e) {
+    toast("Sync failed: " + e.message, 8000);
+  } finally {
+    btn.disabled = false; btn.textContent = "☁ Sync to cloud";
+  }
+});
+
+api("/api/settings").then(s => {
+  if (s.values.cloud_enabled) {
+    document.getElementById("d-upload").style.display = "";
+    api(`/api/scans/${encodeURIComponent(RUN_ID)}/upload/status`).then(paintCloudStatus).catch(() => {});
+  }
+}).catch(() => {});
 
 api(`/api/scans/${encodeURIComponent(RUN_ID)}`)
   .then(d => { DETAIL = d; draw(); })

@@ -56,6 +56,13 @@ def test_pdf_safe_replaces_non_latin1():
     assert "?" in _pdf_safe("汉")  # dropped, never a black box glyph
 
 
+def test_review_badge_reflects_status():
+    from src.wildfire.report import _review_badge
+
+    assert "REVIEWED" in str(_review_badge(True)._cellvalues[0][0])
+    assert "UNREVIEWED" in str(_review_badge(False)._cellvalues[0][0])
+
+
 def test_build_report_writes_pdf(tmp_path):
     out = build_report(_sample_batch(), tmp_path / "report.pdf", ai_text="Test analysis paragraph.")
     assert out.exists()

@@ -76,6 +76,10 @@ def _default_model_sources() -> list[ModelSource]:
 
 @dataclass
 class Settings:
+    # --- operator attribution (NOT an account system: a name for reports /
+    #     future cloud sync so a run can be traced to who produced it) ---
+    operator_name: str = ""
+
     # --- LM Studio (Layer 2) ---
     lmstudio_url: str = "http://localhost:1234"
     lmstudio_model: str = "qwen3.5-9b"
@@ -85,6 +89,13 @@ class Settings:
     models_dir: str = "models"
     source_dir: str = ""  # mission folder (SD-card dump) the console ingests
     map_tiles_dir: str = "map"  # offline map data: tiles {z}/{x}/{y}.jpg + overlays.geojson
+
+    # Cloud Sync ability, only utilizing Azure for this project
+    cloud_enabled: bool = False
+    cloud_provider: str = "azure"
+    azure_connection_string: str = ""
+    azure_container: str = "wildfire-runs"
+    cloud_auto_upload: bool = False
 
     # --- report ---
     language: str = "English"
@@ -125,7 +136,7 @@ class Settings:
     # --- models (primary dead-tree + secondary fire/smoke) ---
     model_sources: list[ModelSource] = field(default_factory=_default_model_sources)
 
-    # ------------------------------------------------------------------ paths
+    # paths
     def _resolve(self, p: str) -> Path:
         path = Path(p)
         return path if path.is_absolute() else (PROJECT_ROOT / path)

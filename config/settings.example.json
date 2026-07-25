@@ -1,4 +1,5 @@
 {
+  "operator_name": "",
   "lmstudio_url": "http://localhost:1234",
   "lmstudio_model": "qwen3.5-9b",
   "output_dir": "outputs",
@@ -6,6 +7,12 @@
   "source_dir": "",
   "map_tiles_dir": "map",
   "language": "English",
+
+  "cloud_enabled": false,
+  "cloud_provider": "azure",
+  "azure_connection_string": "",
+  "azure_container": "wildfire-runs",
+  "cloud_auto_upload": false,
 
   "conf_threshold": 0.30,
   "slice_size": 1024,

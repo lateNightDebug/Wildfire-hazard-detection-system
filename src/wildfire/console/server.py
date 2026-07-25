@@ -63,6 +63,11 @@ class LabelsBody(BaseModel):
     labels: dict[str, list[dict]]
 
 
+class ImageReviewBody(BaseModel):
+    name: str          # image within the run
+    reviewed: bool     # True = operator confirms this image, False = undo
+
+
 class SettingsBody(BaseModel):
     values: dict = {}  # whitelisted scalar settings
     model_enabled: dict[str, bool] = {}  # model_sources key -> enabled
@@ -70,6 +75,7 @@ class SettingsBody(BaseModel):
 
 # Settings the UI may edit, with a light validator each.
 _EDITABLE_SETTINGS: dict = {
+    "operator_name": str,
     "lmstudio_url": str,
     "lmstudio_model": str,
     "language": str,
@@ -86,6 +92,11 @@ _EDITABLE_SETTINGS: dict = {
     "onnx_normalize": lambda v: v if v in ("0-255", "0-1", "imagenet") else "0-255",
     "onnx_channel_order": lambda v: v if v in ("RGB", "BGR") else "RGB",
     "onnx_nms_iou": lambda v: max(0.05, min(0.95, float(v))),
+    "cloud_enabled": bool,
+    "cloud_provider": lambda v: v if v in ("azure",) else "azure",
+    "azure_connection_string": str,
+    "azure_container": str,
+    "cloud_auto_upload": bool,
 }
 
 
@@ -101,8 +112,14 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", Path(name or "upload").name)
 
 
-def _confirmed_batch(batch: BatchResult, labels: dict, out_dir: Path) -> BatchResult:
-    """Rebuild a batch from human-confirmed labels.json boxes (original coords)."""
+def _confirmed_batch(batch: BatchResult, labels: dict, out_dir: Path,
+                     force_render: bool = True) -> BatchResult:
+    """Rebuild a batch from human-confirmed labels.json boxes (original coords).
+
+    force_render=False reuses confirmed imagery that Save-review already wrote —
+    regenerating a report must NOT re-decode 100 full-res frames again (that
+    froze the app). Save-review keeps force_render=True so edits re-render.
+    """
     from ..annotate import draw_boxes, grid_density_map
     from ..imageio_utils import load_rgb_uint8
     from ..risk import batch_stats
@@ -119,19 +136,23 @@ def _confirmed_batch(batch: BatchResult, labels: dict, out_dir: Path) -> BatchRe
             cls = str(rec.get("class") or rec.get("proposed_class") or "Dead Tree")
             dets.append(Detection(cls_name=cls.lower().replace(" ", "_"), display=cls,
                                   score=1.0, xyxy=tuple(float(v) for v in rec["xyxy"])))
+        stem = Path(im.path).stem
+        annot_out = out_dir / "annotated" / f"{stem}_confirmed.jpg"
+        grid_out = out_dir / "gridmaps" / f"{stem}_confirmed.jpg"
         annotated_path, density_path = im.annotated_path, im.density_path
-        try:
-            src = im.path if Path(im.path).exists() else (im.orig_display_path or im.path)
-            bgr = cv2.cvtColor(load_rgb_uint8(src), cv2.COLOR_RGB2BGR)
-            stem = Path(im.path).stem
-            (out_dir / "annotated").mkdir(parents=True, exist_ok=True)
-            (out_dir / "gridmaps").mkdir(parents=True, exist_ok=True)
-            annotated_path = str(out_dir / "annotated" / f"{stem}_confirmed.jpg")
-            cv2.imwrite(annotated_path, draw_boxes(bgr, dets), [cv2.IMWRITE_JPEG_QUALITY, 88])
-            density_path = str(out_dir / "gridmaps" / f"{stem}_confirmed.jpg")
-            cv2.imwrite(density_path, grid_density_map(bgr, dets), [cv2.IMWRITE_JPEG_QUALITY, 88])
-        except Exception:
-            pass
+        if not force_render and annot_out.exists() and grid_out.exists():
+            annotated_path, density_path = str(annot_out), str(grid_out)  # reuse
+        else:
+            try:
+                src = im.path if Path(im.path).exists() else (im.orig_display_path or im.path)
+                bgr = cv2.cvtColor(load_rgb_uint8(src), cv2.COLOR_RGB2BGR)
+                annot_out.parent.mkdir(parents=True, exist_ok=True)
+                grid_out.parent.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(annot_out), draw_boxes(bgr, dets), [cv2.IMWRITE_JPEG_QUALITY, 88])
+                cv2.imwrite(str(grid_out), grid_density_map(bgr, dets), [cv2.IMWRITE_JPEG_QUALITY, 88])
+                annotated_path, density_path = str(annot_out), str(grid_out)
+            except Exception:
+                pass
         new_images.append(replace(im, detections=dets, flagged=bool(dets),
                                   annotated_path=annotated_path, density_path=density_path))
     info = dict(batch.batch_info)
@@ -148,6 +169,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings.ensure_dirs()
     app.state.source_cache = {}  # folder -> (signature, scan result)
     app.state.review_proc = None
+    app.state.report_jobs = {}  # run_id -> report generation status
+
+    # used for cloud upload status
+    app.state.cloud_jobs = {} 
 
     def _scan_cached(folder: str) -> dict:
         """Scan the mission folder, reusing the result while nothing changed."""
@@ -177,6 +202,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=PKG_DIR / "static"), name="static")
     app.mount("/outputs", StaticFiles(directory=app.state.settings.output_path), name="outputs")
+    branding_dir = PROJECT_ROOT / "branding"
+    branding_dir.mkdir(exist_ok=True)
+    app.mount("/branding", StaticFiles(directory=branding_dir), name="branding")
+
+    # ------------------------------------------------------------- branding
+    @app.get("/api/branding")
+    def api_branding():
+        """Brand config the UI applies at load: name, colors, and an auto-detected
+        logo file — drop logo.png/svg into branding/ and it appears, no code edit."""
+        cfg = data._load_json(branding_dir / "brand.json") or {}
+        logo_url = next(
+            (f"/branding/logo.{ext}" for ext in ("svg", "png", "jpg", "jpeg", "webp")
+             if (branding_dir / f"logo.{ext}").exists()), None)
+        return {
+            "app_name": cfg.get("app_name", "Wildfire Hazard Detection System"),
+            "subtitle": cfg.get("subtitle", "Operations Console · Offline"),
+            "logo_url": logo_url,
+            "colors": cfg.get("colors", {}),
+        }
 
     # ------------------------------------------------------------- pages
     @app.get("/")
@@ -359,10 +403,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"reports": reports}
 
     # ------------------------------------------------------- settings
+    _SECRET_MASK = "••••••••"
+
     @app.get("/api/settings")
     def api_get_settings():
         s: Settings = app.state.settings
-        return {"values": {k: getattr(s, k) for k in _EDITABLE_SETTINGS},
+        values = {k: getattr(s, k) for k in _EDITABLE_SETTINGS}
+        # as "leave unchanged" in api_set_settings below.
+        values["azure_connection_string"] = _SECRET_MASK if s.azure_connection_string else ""
+        return {"values": values,
                 "models": data.model_status(s),
                 "output_dir": str(s.output_path)}
 
@@ -371,15 +420,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         s: Settings = app.state.settings
         applied = {}
         for key, value in body.values.items():
+            if key == "azure_connection_string" and value == _SECRET_MASK:
+                continue
             caster = _EDITABLE_SETTINGS.get(key)
             if caster is None:
-                continue  # unknown/readonly keys are ignored, not an error
+                continue
             try:
                 casted = caster(value)
             except (TypeError, ValueError):
                 raise HTTPException(400, f"invalid value for {key}: {value!r}")
             setattr(s, key, casted)
-            applied[key] = casted
+            applied[key] = casted if key != "azure_connection_string" else _SECRET_MASK
         for key, enabled in body.model_enabled.items():
             for src in s.model_sources:
                 if src.key == key:
@@ -387,7 +438,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     applied[f"model:{key}"] = bool(enabled)
         if app.state.persist_settings:
             s.save()
-        # Loaded detectors baked in the old thresholds/toggles — rebuild next job.
+
+            # reset detectors
         app.state.jobs.reset_detectors()
         return {"applied": applied, "models": data.model_status(s)}
 
@@ -557,35 +609,142 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         detail = data.scan_detail(Path(run_id).name, settings)
         return {"saved": len(records), "detail": detail}
 
+    @app.post("/api/scans/{run_id}/image-reviewed")
+    def api_mark_image_reviewed(run_id: str, body: ImageReviewBody):
+        """Toggle the operator's per-image 'reviewed' check (persisted)."""
+        settings: Settings = app.state.settings
+        run_dir = settings.output_path / Path(run_id).name
+        batch_file = run_dir / "batch.json"
+        if not batch_file.exists():
+            raise HTTPException(404, f"run '{run_id}' not found")
+        rev_file = run_dir / "reviewed_images.json"
+        names = set((data._load_json(rev_file) or {}).get("reviewed", []))
+        valid = {im.get("name") for im in
+                 json.loads(batch_file.read_text(encoding="utf-8")).get("images", [])}
+        if body.name not in valid:
+            raise HTTPException(400, f"unknown image '{body.name}' in this run")
+        names.add(body.name) if body.reviewed else names.discard(body.name)
+        rev_file.write_text(json.dumps({"reviewed": sorted(names)}, indent=2), encoding="utf-8")
+        return {"name": body.name, "reviewed": body.reviewed,
+                "reviewed_image_count": len(names), "total": len(valid)}
+
     @app.post("/api/scans/{run_id}/report")
     def api_generate_report(run_id: str):
+        """Start report generation in a BACKGROUND thread and return immediately.
+
+        Building a report for a 100-image flight (confirmed imagery + LLM + PDF)
+        took long enough to freeze the desktop WebView when done inside the
+        request. The UI polls /report/status instead.
+        """
+        import threading
+
         settings: Settings = app.state.settings
         run_dir = settings.output_path / Path(run_id).name
         batch_file = run_dir / "batch.json"
         if not batch_file.exists():
             raise HTTPException(404, f"run '{run_id}' has no batch.json")
-        from ..llm import generate_analysis, resolve_model_id
-        from ..report import build_report, build_summary_text, timestamped_report_path
+        cur = app.state.report_jobs.get(run_id)
+        if cur and cur.get("state") == "running":
+            return JSONResponse(cur, status_code=409)
+        job = {"state": "running", "stage": "starting"}
+        app.state.report_jobs[run_id] = job
 
-        batch = BatchResult.from_dict(json.loads(batch_file.read_text(encoding="utf-8")))
-        labels_file = run_dir / "labels.json"
-        reviewed = labels_file.exists()
-        if reviewed:
-            labels = json.loads(labels_file.read_text(encoding="utf-8"))
-            batch = _confirmed_batch(batch, labels, run_dir)
+        def work() -> None:
+            try:
+                from ..llm import generate_analysis, resolve_model_id
+                from ..report import build_report, build_summary_text, timestamped_report_path
 
-        ai_text = None
-        model, _ = resolve_model_id(settings.lmstudio_url, settings.lmstudio_model)
-        if model:
-            ai_text, _ = generate_analysis(build_summary_text(batch), settings.lmstudio_url, model)
+                batch = BatchResult.from_dict(json.loads(batch_file.read_text(encoding="utf-8")))
+                labels_file = run_dir / "labels.json"
+                reviewed = labels_file.exists()
+                if reviewed:
+                    job["stage"] = "confirming boxes"
+                    labels = json.loads(labels_file.read_text(encoding="utf-8"))
+                    batch = _confirmed_batch(batch, labels, run_dir, force_render=False)
+                job["stage"] = "AI analysis"
+                ai_text = None
+                model, _ = resolve_model_id(settings.lmstudio_url, settings.lmstudio_model)
+                if model:
+                    ai_text, _ = generate_analysis(build_summary_text(batch),
+                                                   settings.lmstudio_url, model)
+                job["stage"] = "building PDF"
+                pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text,
+                                   max_image_pages=settings.report_max_image_pages,
+                                   map_dir=settings._resolve(settings.map_tiles_dir),
+                                   branding_dir=PROJECT_ROOT / "branding")
+                note = "" if reviewed else "Generated from UNREVIEWED proposals - confirm the boxes first for a reviewed report."
+                if not model:
+                    note = (note + " LM Studio offline - AI analysis omitted.").strip()
+                job.update(state="done", report_url=data._rel_url(str(pdf), settings.output_path),
+                           reviewed=reviewed, note=note)
+                if settings.cloud_enabled and settings.cloud_auto_upload:
+                    _start_cloud_upload(run_id, run_dir, settings)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                job.update(state="error", error=f"{type(e).__name__}: {e}")
 
-        pdf = build_report(batch, timestamped_report_path(run_dir), ai_text=ai_text,
-                           max_image_pages=settings.report_max_image_pages,
-                           map_dir=settings._resolve(settings.map_tiles_dir))
-        note = "" if reviewed else "Generated from UNREVIEWED proposals — confirm the boxes first for a reviewed report."
-        if not model:
-            note = (note + " LM Studio offline — AI analysis omitted.").strip()
-        return {"report_url": data._rel_url(str(pdf), settings.output_path),
-                "reviewed": reviewed, "note": note}
+        threading.Thread(target=work, name=f"report-{run_id}", daemon=True).start()
+        return JSONResponse({"state": "running"}, status_code=202)
+
+    @app.get("/api/scans/{run_id}/report/status")
+    def api_report_status(run_id: str):
+        return app.state.report_jobs.get(run_id) or {"state": "idle"}
+
+    # cloud sync
+    def _start_cloud_upload(run_id: str, run_dir: Path, settings: Settings) -> dict:
+        import threading
+
+        from .. import cloud_sync
+
+        cur = app.state.cloud_jobs.get(run_id)
+        if cur and cur.get("state") == "running":
+            return cur
+        job = {"state": "running", "done": 0, "total": 0, "current": ""}
+        app.state.cloud_jobs[run_id] = job
+
+        def work() -> None:
+            try:
+                def cb(done: int, total: int, current: str) -> None:
+                    job.update(done=done, total=total, current=current)
+
+                result = cloud_sync.upload_run(run_dir, run_id, settings, progress=cb)
+                job.update(state="done", current="", **result.to_dict())
+            except cloud_sync.CloudSyncError as e:
+                job.update(state="error", error=str(e))
+            except Exception as e:
+                job.update(state="error", error=f"{type(e).__name__}: {e}")
+
+        threading.Thread(target=work, name=f"cloud-upload-{run_id}", daemon=True).start()
+        return job
+
+    @app.post("/api/scans/{run_id}/upload")
+    def api_upload_run(run_id: str):
+        settings: Settings = app.state.settings
+        if not settings.cloud_enabled:
+            raise HTTPException(400, "Cloud sync is disabled in Settings.")
+        run_dir = settings.output_path / Path(run_id).name
+        if not (run_dir / "batch.json").exists():
+            raise HTTPException(404, f"run '{run_id}' not found")
+        job = _start_cloud_upload(run_id, run_dir, settings)
+        return JSONResponse(job, status_code=202)
+
+    @app.get("/api/scans/{run_id}/upload/status")
+    def api_upload_status(run_id: str):
+        from .. import cloud_sync
+
+        settings: Settings = app.state.settings
+        run_dir = settings.output_path / Path(run_id).name
+        job = app.state.cloud_jobs.get(run_id)
+        if job:
+            return job
+        return cloud_sync.sync_status(run_dir) or {"state": "idle"}
+
+    @app.post("/api/cloud/test")
+    def api_cloud_test():
+        from .. import cloud_sync
+
+        ok, message = cloud_sync.test_connection(app.state.settings)
+        return {"ok": ok, "message": message}
 
     return app

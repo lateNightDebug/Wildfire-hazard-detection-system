@@ -23,6 +23,7 @@ pywebview                # native app window (--desktop / installed shortcut)
 requests
 huggingface_hub
 tqdm
+azure-storage-blob>=12.19,<13
 
 # Optional: GeoTIFF GPS fallback (uncomment if your drone images are orthomosaics)
 # rasterio

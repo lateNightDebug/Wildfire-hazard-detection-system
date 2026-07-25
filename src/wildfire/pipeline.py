@@ -143,6 +143,7 @@ def run_batch(
 
     batch_info = {
         "batch_label": batch_label or out.name,
+        "operator": settings.operator_name,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "device": device_label(),
         "model_count": len(detectors),
