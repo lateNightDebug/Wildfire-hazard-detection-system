@@ -32,9 +32,11 @@ map tile downloads (Esri). The app itself never needs the network.
 2. **Commit messages must not contain AI signatures** (no `Co-Authored-By`,
    no "Generated with ..."). The team works with several AI tools and per-model
    footers pollute the history.
-3. **Do not touch the `UI/` directory** — that is a teammate's separate Tkinter
-   prototype (mock data, its own login screens). It is unrelated to the real
-   product in `src/wildfire/console/`. Leave it alone unless asked.
+3. **There is exactly one UI: `src/wildfire/console/`.** A second Tkinter
+   prototype (`UI/`, with login screens and Admin/Pilot roles) and its sample
+   credential file (`Userbase samples/`) were removed on 2026-07-25 — they were a
+   separate entry point that contradicted rule 7, and no code referenced them.
+   Do not reintroduce a parallel UI.
 4. **Always use the project venv**: `.venv\Scripts\python.exe`. The system
    Python has none of the dependencies.
 5. **Restart the app/server after code changes.** Pages (HTML/JS) are read from

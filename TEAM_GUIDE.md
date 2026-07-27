@@ -281,18 +281,25 @@ confusion.
 **Delete branches once they are merged.** A merged branch that stays on the remote
 looks like unfinished work to everyone else.
 
-**Two open questions the team should settle explicitly** (they are product decisions,
-not code problems):
+**Settled:** the second UI is gone. `UI/` (a Tkinter prototype with login screens and
+Admin/Pilot roles) and `Userbase samples/` (its sample credential CSV) were deleted on
+2026-07-25. Nothing referenced them, and they contradicted the no-account-system rule
+the product is described by. **There is one UI: `src/wildfire/console/`.**
 
-1. `UI/` is a separate Tkinter prototype with login screens and Admin/Pilot roles,
-   merged into `main` early on. The shipped product has **no account system** by
-   design (single-operator offline tool, see the hard rules in `AGENTS.md`). Decide
-   whether `UI/` is a discarded sketch or a direction — and if it is a sketch, say so
-   before a demo, because opening it contradicts how we describe the product.
-2. Anything branded "cloud deployment" needs to state which side of the line it is on.
-   Cloud for **training** (Azure Custom Vision) is part of the design; moving the
-   **running app** to the cloud breaks the offline-first requirement the whole product
-   rests on. Cheapest to ask at the start of that work, not the end.
+**Still open — anything that moves data or the app off the field laptop.** Cloud for
+**training** (Azure Custom Vision) is part of the design and always was. Two newer
+pieces of work are not obviously on that side of the line and need a decision before
+they land:
+
+- **Optional Azure Blob upload of run folders.** Off by default and lazily imported, so
+  it does not break an offline install — but it does mean survey imagery can leave the
+  machine, and "nothing is uploaded anywhere" (section 6) stops being true as written.
+  If we keep it, the client has to agree, the README/manual wording has to change, and
+  `azure-storage-blob` belongs in an optional extra rather than plain `requirements.txt`.
+- **Docker.** The product is a Windows desktop app: a native pywebview window plus local
+  GPU inference. A Linux container has neither by default, so containerising it changes
+  what the product *is*, not just how it ships. Worth being explicit about what problem
+  the container is meant to solve.
 
 ## 14. Gotchas (things that already bit us)
 
