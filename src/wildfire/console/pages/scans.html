@@ -15,80 +15,74 @@
     <p class="sub">Manage and review all drone scan sessions</p>
   </div>
 
-  <!-- MODEL STATUS -->
-  <div class="card" style="display:flex; align-items:center; justify-content:space-between; gap:24px; border-left:4px solid var(--green); padding:18px 22px; margin-bottom:16px;">
-    <div style="display:flex; align-items:center; gap:16px;">
-      <div style="width:46px; height:46px; border-radius:11px; background:var(--green-bg); border:1px solid var(--green-line); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2D5A2D" stroke-width="1.8"><path d="M12 2 4 6v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-4z"></path><path d="m9 12 2 2 4-4"></path></svg>
-      </div>
-      <div style="line-height:1.3;">
-        <div style="font-size:11px; font-weight:600; letter-spacing:.4px; color:var(--muted-2);">ACTIVE DETECTION MODELS</div>
-        <div style="font-size:17px; font-weight:600; margin-top:2px;" id="model-title">Loading…</div>
-        <div style="display:flex; align-items:center; gap:14px; margin-top:6px; flex-wrap:wrap;" id="model-lines"></div>
-      </div>
-    </div>
-    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:7px; flex-shrink:0; max-width:250px;">
-      <span style="font-size:11px; color:#a0a098; text-align:right; line-height:1.4;">
-        Models are configured in <span class="mono">config/settings.json</span> → model_sources.
-        Drop a Custom Vision ONNX export into <span class="mono">models/</span> to add your trained detector.
-      </span>
-    </div>
-  </div>
-
-  <!-- MISSION FOLDER -->
+  <!-- MISSION FOLDER + UPLOAD: one card. Pointing at an SD card and dropping a
+       few images are the same task - "give the app some photos" - so they no
+       longer sit in two competing cards. -->
   <div class="card" style="padding:20px 22px; margin-bottom:16px;">
     <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:12px;">
       <div style="display:flex; align-items:baseline; gap:10px;">
         <span style="font-size:14px; font-weight:600;">Mission Folder</span>
         <span style="font-size:12px; color:var(--muted-2);">Point at the flight folder / SD-card dump — images are grouped by day and flight</span>
       </div>
-      <span style="font-size:11px; color:#a0a098;" id="src-ignored"></span>
+      <span style="font-size:11px; color:var(--muted-3);" id="src-ignored"></span>
     </div>
     <div style="display:flex; gap:8px;">
       <div class="search-box" style="flex:1;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9a9a92" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
         <input id="src-path" placeholder="e.g. E:\DCIM\Mission_July or D:\flights\2026-07-08" spellcheck="false">
       </div>
-      <button id="src-load" class="btn btn-primary" style="padding:8px 16px;">Load folder</button>
+      <button id="src-load" class="btn btn-primary" style="padding:8px 16px; white-space:nowrap;">Load folder</button>
+      <button id="pick-images" class="btn btn-outline" style="padding:8px 16px; white-space:nowrap;"
+              title="Select one or more images (Ctrl+click or Shift+click for several)">+ Upload images</button>
     </div>
+
+    <!-- Real progress, not a spinner: a full SD card is tens of thousands of
+         EXIF reads and the operator needs to see it moving. -->
+    <div id="scan-progress" style="display:none; margin-top:12px;">
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted-2); margin-bottom:5px;">
+        <span id="scan-progress-label">Reading images…</span>
+        <span class="mono" id="scan-progress-count"></span>
+      </div>
+      <div class="hbar" style="height:5px;"><div id="scan-progress-bar" style="width:0%; background:var(--green-2); transition:width .2s;"></div></div>
+    </div>
+
+    <div id="drop-hint" style="display:none; margin-top:12px; padding:10px 14px; border:1px dashed var(--green-line);
+         border-radius:9px; background:var(--green-bg); font-size:12px; color:var(--green);">
+      Drop the images to add them
+    </div>
+    <input type="file" id="file-input" multiple accept="image/jpeg,image/png,image/tiff,.jpg,.jpeg,.png,.tif,.tiff,.bmp" style="display:none;">
+
     <div id="src-sessions" style="margin-top:14px;"></div>
   </div>
 
-  <!-- NEW SCAN / UPLOAD -->
-  <div class="card" style="padding:20px 22px; margin-bottom:24px;">
-    <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:14px;">
-      <span style="font-size:14px; font-weight:600;">New Scan</span>
-      <span style="font-size:12px; color:var(--muted-2);">…or upload a few images directly</span>
-    </div>
-
-    <div id="dropzone" class="dropzone">
-      <div class="dropzone-icon">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2D5A2D" stroke-width="1.7"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M12 3v13M7 8l5-5 5 5"></path></svg>
-      </div>
-      <div style="font-size:14px; font-weight:600;">Drag and drop drone images here, or <span style="color:var(--green); text-decoration:underline;">browse</span> to select</div>
-      <div style="font-size:12px; color:var(--muted-2); margin-top:7px;">Supported formats: JPG · TIFF · PNG</div>
-      <div style="font-size:11px; color:#a0a098; margin-top:3px;">Large images are automatically sliced for optimal detection</div>
-    </div>
-    <input type="file" id="file-input" multiple accept=".jpg,.jpeg,.png,.tif,.tiff,.bmp" style="display:none;">
-
-    <div id="upload-ready" class="upload-ready" style="display:none;">
-      <div style="display:flex; align-items:center; justify-content:space-between;">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2D5A2D" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M12 3v13M7 8l5-5 5 5"></path></svg>
-          <span style="font-size:13px; font-weight:600;" id="ready-count"></span>
-          <span style="font-size:12px; color:var(--muted);" id="ready-size"></span>
-        </div>
+  <!-- UPLOAD TRAY: only present once images are chosen -->
+  <div class="card" id="upload-card" style="padding:16px 22px; margin-bottom:16px; display:none;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2D5A2D" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M12 3v13M7 8l5-5 5 5"></path></svg>
+        <span style="font-size:13px; font-weight:600;" id="ready-count"></span>
+        <span style="font-size:12px; color:var(--muted-2);" id="ready-size"></span>
+        <span id="add-more" style="font-size:12px; color:var(--green); cursor:pointer; text-decoration:underline;">Add more</span>
         <span id="clear-upload" style="font-size:12px; color:var(--muted-2); cursor:pointer; text-decoration:underline;">Clear</span>
       </div>
-      <div style="display:flex; gap:8px; margin-top:12px;" id="ready-thumbs"></div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span id="queued-banner" class="queued-banner" style="visibility:hidden;">
+          <span class="pulse-dot"></span><span id="queued-text"></span>
+        </span>
+        <button id="start-btn" class="btn btn-primary" disabled>Start Detection</button>
+      </div>
     </div>
+    <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;" id="ready-thumbs"></div>
+  </div>
 
-    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:16px;">
-      <span id="queued-banner" class="queued-banner" style="visibility:hidden;">
-        <span class="pulse-dot"></span><span id="queued-text"></span>
-      </span>
-      <button id="start-btn" class="btn btn-primary" disabled>Start Detection</button>
-    </div>
+  <!-- Detector status: one quiet line. It is reference information, not the
+       first thing an operator came here to do. -->
+  <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px;
+              padding:0 2px; font-size:11px; color:var(--muted-2);">
+    <span style="font-weight:600; letter-spacing:.3px;">DETECTORS</span>
+    <span id="model-lines" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;"></span>
+    <span style="color:var(--muted-3);">·</span>
+    <span style="color:var(--muted-3);">drop a Custom Vision ONNX export into <span class="mono">models/</span> to add your own</span>
   </div>
 
   <!-- IMAGE PICKER MODAL (second-level window: big thumbnails, lazy-loaded) -->
@@ -221,18 +215,16 @@ async function initCloud() {
   loadCloud();
 }
 
-/* ------------------------------------------------------------- models card */
+/* Detector status as one line. Which detectors are loaded is reference
+   information, so it gets a strip rather than the top card it used to own. */
 async function loadModels() {
   const { models } = await api("/api/models");
-  const ready = models.filter(m => m.ready);
-  document.getElementById("model-title").textContent = ready.length
-    ? ready.map(m => m.label).join("  +  ")
-    : "No detector ready";
   document.getElementById("model-lines").innerHTML = models.map(m => `
-    <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:${m.ready ? "var(--green-2)" : "var(--muted-3)"};">
-      <span style="width:7px; height:7px; border-radius:50%; background:${m.ready ? "var(--green-2)" : "#c9c9c0"};"></span>
-      ${esc(m.key)}: ${m.ready ? "Ready" : esc(m.note)}
-    </span>`).join("");
+    <span style="display:inline-flex; align-items:center; gap:5px; color:${m.ready ? "var(--green-2)" : "var(--muted-3)"};"
+          title="${esc(m.ready ? m.label : m.note)}">
+      <span style="width:6px; height:6px; border-radius:50%; background:${m.ready ? "var(--green-2)" : "#c9c9c0"};"></span>
+      ${esc(m.key)}
+    </span>`).join("") || '<span style="color:var(--red);">no detector ready</span>';
 }
 
 /* ------------------------------------------------------------- mission folder */
@@ -408,11 +400,36 @@ async function loadSource() {
   drawSessions(src);
 }
 
+/* The scan blocks its own request while it reads EXIF from every image, so
+   progress is polled from a separate endpoint alongside it. setInterval, not
+   requestAnimationFrame: rAF stops in a background window and the bar would
+   freeze exactly when someone alt-tabs away to wait. */
+function watchScanProgress() {
+  const box = document.getElementById("scan-progress");
+  const bar = document.getElementById("scan-progress-bar");
+  const count = document.getElementById("scan-progress-count");
+  const label = document.getElementById("scan-progress-label");
+  box.style.display = "";
+  bar.style.width = "0%";
+  count.textContent = "";
+  label.textContent = "Listing files…";
+  const timer = setInterval(async () => {
+    const p = await fetch("/api/source/progress").then(r => r.json()).catch(() => null);
+    if (!p || p.state !== "scanning") return;
+    if (!p.total) { label.textContent = "Listing files…"; return; }
+    label.textContent = "Reading capture times…";
+    bar.style.width = `${Math.round((p.done / p.total) * 100)}%`;
+    count.textContent = `${p.done.toLocaleString()} / ${p.total.toLocaleString()}`;
+  }, 400);
+  return () => { clearInterval(timer); box.style.display = "none"; };
+}
+
 document.getElementById("src-load").addEventListener("click", async () => {
   const btn = document.getElementById("src-load");
   const folder = document.getElementById("src-path").value.trim();
   if (!folder) { toast("Paste the mission folder path first."); return; }
   btn.disabled = true; btn.textContent = "Scanning…";
+  const stopWatching = watchScanProgress();
   try {
     drawSessions(await api("/api/source", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -421,6 +438,7 @@ document.getElementById("src-load").addEventListener("click", async () => {
   } catch (e) {
     toast("Could not load folder: " + e.message, 8000);
   } finally {
+    stopWatching();
     btn.disabled = false; btn.textContent = "Load folder";
   }
 });
@@ -428,38 +446,75 @@ document.getElementById("src-path").addEventListener("keydown", e => {
   if (e.key === "Enter") document.getElementById("src-load").click();
 });
 
-/* ------------------------------------------------------------- upload */
-const dz = document.getElementById("dropzone");
+/* ------------------------------------------------------------- upload
+   Picking images ADDS to the selection instead of replacing it. The old
+   behaviour looked like "you can only upload one image": each trip to the file
+   dialog wiped the previous pick, and once anything was selected the dropzone
+   was hidden so there was no way back to the dialog at all. */
 const fileInput = document.getElementById("file-input");
-dz.addEventListener("click", () => fileInput.click());
-dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag"); });
-dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
-dz.addEventListener("drop", e => {
-  e.preventDefault(); dz.classList.remove("drag");
-  setFiles([...e.dataTransfer.files]);
-});
-fileInput.addEventListener("change", () => setFiles([...fileInput.files]));
+const dropHint = document.getElementById("drop-hint");
+const uploadCard = document.getElementById("upload-card");
+
+// Named openFileDialog, not openPicker: openPicker() is already the flight
+// image-selection modal further up this page.
+function openFileDialog() {
+  fileInput.value = "";  // else re-picking the same file fires no change event
+  fileInput.click();
+}
+document.getElementById("pick-images").addEventListener("click", openFileDialog);
+document.getElementById("add-more").addEventListener("click", openFileDialog);
+fileInput.addEventListener("change", () => addFiles([...fileInput.files]));
 document.getElementById("clear-upload").addEventListener("click", () => setFiles([]));
 
-function setFiles(files) {
-  const ok = files.filter(f => /\.(jpe?g|png|tiff?|bmp)$/i.test(f.name));
-  if (files.length && !ok.length) toast("No supported images (JPG/TIFF/PNG) in the selection.");
-  pendingFiles = ok;
-  const has = pendingFiles.length > 0;
-  dz.style.display = has ? "none" : "";
-  document.getElementById("upload-ready").style.display = has ? "" : "none";
-  document.getElementById("start-btn").disabled = !has;
-  if (has) {
-    const mb = pendingFiles.reduce((a, f) => a + f.size, 0) / 1048576;
-    document.getElementById("ready-count").textContent =
-      `${pendingFiles.length} image${pendingFiles.length === 1 ? "" : "s"} ready`;
-    document.getElementById("ready-size").textContent = `· ${mb.toFixed(1)} MB`;
-    const thumbs = pendingFiles.slice(0, 6).map(f =>
-      `<img class="thumb-sq" src="${URL.createObjectURL(f)}" alt="${esc(f.name)}" title="${esc(f.name)}">`).join("");
-    const extra = pendingFiles.length > 6
-      ? `<div class="thumb-sq" style="display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:var(--muted);">+${pendingFiles.length - 6}</div>` : "";
-    document.getElementById("ready-thumbs").innerHTML = thumbs + extra;
+/* Drag and drop anywhere on the page - the operator should not have to hit a
+   specific rectangle, and there no longer is one. */
+let dragDepth = 0;
+document.addEventListener("dragenter", e => {
+  if (![...(e.dataTransfer?.types || [])].includes("Files")) return;
+  dragDepth++; dropHint.style.display = "";
+});
+document.addEventListener("dragleave", () => {
+  if (--dragDepth <= 0) { dragDepth = 0; dropHint.style.display = "none"; }
+});
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => {
+  e.preventDefault(); dragDepth = 0; dropHint.style.display = "none";
+  addFiles([...(e.dataTransfer?.files || [])]);
+});
+
+const IMAGE_RE = /\.(jpe?g|png|tiff?|bmp)$/i;
+
+function addFiles(files) {
+  const ok = files.filter(f => IMAGE_RE.test(f.name));
+  if (files.length && !ok.length) {
+    toast("No supported images (JPG/TIFF/PNG) in the selection.");
+    return;
   }
+  // Same file picked twice is one file, not two uploads.
+  const seen = new Set(pendingFiles.map(f => `${f.name}:${f.size}`));
+  const added = ok.filter(f => !seen.has(`${f.name}:${f.size}`));
+  const dupes = ok.length - added.length;
+  setFiles([...pendingFiles, ...added]);
+  if (added.length) toast(`Added ${added.length} image${added.length === 1 ? "" : "s"}`
+                          + (dupes ? ` (${dupes} already selected)` : ""));
+  else if (dupes) toast("Those images are already selected.");
+}
+
+function setFiles(files) {
+  pendingFiles = files;
+  const has = pendingFiles.length > 0;
+  uploadCard.style.display = has ? "" : "none";
+  document.getElementById("start-btn").disabled = !has;
+  if (!has) return;
+  const mb = pendingFiles.reduce((a, f) => a + f.size, 0) / 1048576;
+  document.getElementById("ready-count").textContent =
+    `${pendingFiles.length} image${pendingFiles.length === 1 ? "" : "s"} ready`;
+  document.getElementById("ready-size").textContent = `· ${mb.toFixed(1)} MB`;
+  const thumbs = pendingFiles.slice(0, 8).map(f =>
+    `<img class="thumb-sq" src="${URL.createObjectURL(f)}" alt="${esc(f.name)}" title="${esc(f.name)}">`).join("");
+  const extra = pendingFiles.length > 8
+    ? `<div class="thumb-sq" style="display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:var(--muted);">+${pendingFiles.length - 8}</div>` : "";
+  document.getElementById("ready-thumbs").innerHTML = thumbs + extra;
 }
 
 document.getElementById("start-btn").addEventListener("click", async () => {

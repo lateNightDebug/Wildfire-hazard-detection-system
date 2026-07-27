@@ -129,8 +129,10 @@ class Settings:
 
     # --- console display severity (UI-only badge; no risk field in data/PDF) ---
     # Dead trees are the primary target, so severity = avg dead trees per image.
-    severity_deadtrees_high: float = 10.0  # >= this per image -> High
-    severity_deadtrees_medium: float = 3.0  # >= this per image -> Medium
+    # Calibrated on real imagery: 67 frames of the May 2025 flight run 27..102
+    # dead trees each, median 60. The old 10 / 3 graded everything High.
+    severity_deadtrees_high: float = 80.0  # >= this per image -> High
+    severity_deadtrees_medium: float = 45.0  # >= this per image -> Medium
 
     # --- ONNX detector (backend="onnx", e.g. Azure Custom Vision export) ---
     onnx_input_size: int = 640  # fallback when the model input has dynamic H/W

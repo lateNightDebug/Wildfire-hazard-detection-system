@@ -36,8 +36,13 @@ SEVERITY_ORDER = {"high": 3, "medium": 2, "low": 1}
 
 
 def display_severity(counts_by_type: dict, image_count: int,
-                     dead_high: float = 10.0, dead_medium: float = 3.0) -> Optional[str]:
-    """UI-only severity: dead-tree density ladder with flame/smoke escalation."""
+                     dead_high: float = 80.0, dead_medium: float = 45.0) -> Optional[str]:
+    """UI-only severity: dead-tree density ladder with flame/smoke escalation.
+
+    Thresholds are calibrated, not guessed: real frames hold 27..102 dead trees
+    (median 60), so the original 10 / 3 graded everything High. 80 / 45 are about
+    the 85th and 22nd percentiles. Recalibrate when the detector changes.
+    """
     if counts_by_type.get("Flame"):
         return "high"
     dead_per_image = counts_by_type.get("Dead Tree", 0) / max(1, image_count)
@@ -322,10 +327,8 @@ _M_PER_DEG_LAT = 111320.0
 def _cell_size_deg(points: list[dict], radius_m: float) -> tuple[float, float]:
     """Grid cell size in degrees, never narrower than `radius_m` in either axis.
 
-    Metres per degree of longitude shrink as latitude rises, so the highest
-    latitude present needs the widest cell in degrees; sizing off it keeps every
-    cell at least radius_m wide everywhere in the data. cos is clamped so one
-    bogus near-polar coordinate cannot inflate the grid to a single cell.
+    Sized off the highest latitude present, where a degree of longitude is
+    shortest; cos is clamped so a bogus near-polar point cannot collapse the grid.
     """
     max_lat = max((abs(p["lat"]) for p in points), default=0.0)
     cos_lat = max(math.cos(math.radians(min(max_lat, 89.0))), 0.01)
@@ -335,17 +338,12 @@ def _cell_size_deg(points: list[dict], radius_m: float) -> tuple[float, float]:
 def cluster_sites(points: list[dict], radius_m: float = 40.0) -> list[dict]:
     """Tier-1 dedup: greedy-cluster image points within `radius_m` into sites.
 
-    Overlapping flight photos shoot the same trees from ~meters apart, so one
-    physical location shows up in 3-5 images. A site = one map marker with the
-    max severity and the member images; counting SITES, not images, is the
-    honest number for "distinct locations flagged".
+    Overlapping photos shoot the same trees, so one location appears in 3-5
+    images; counting SITES is the honest number for "distinct locations flagged".
 
-    Sites are indexed into a grid of radius-sized cells so each point only
-    compares against the 3x3 cells that could hold a match. Comparing against
-    every site instead is O(n * sites) and measured 8.4 s for a 10k-photo month
-    -- and this runs inside a web request, which would freeze the window. The
-    output is unchanged: same distance maths, and ties still go to the
-    earliest-created site, exactly as the old linear scan did.
+    Grid-indexed so each point only checks the 3x3 cells that could match. The
+    plain scan it replaced took 7.5 s for a 10k-photo month, inside a web request.
+    Output is identical, ties still going to the earliest site (test pins this).
     """
     if not points:
         return []

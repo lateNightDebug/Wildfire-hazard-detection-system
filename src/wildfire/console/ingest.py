@@ -64,19 +64,36 @@ def folder_signature(folder: Path) -> tuple:
     return (count, newest)
 
 
-def scan_source(folder: str | Path) -> dict:
-    """Walk the folder; read images only. Returns images (time-sorted) + ignored count."""
+def scan_source(folder: str | Path, progress=None) -> dict:
+    """Walk the folder; read images only. Returns images (time-sorted) + ignored count.
+
+    `progress(done, total)` is called as the images are read. A card-sized
+    mission folder holds tens of thousands of files and every image costs an EXIF
+    read, so this can run for a long time; without a signal the console just
+    looks frozen. The paths are listed first (cheap) so `total` is a real total
+    rather than a guess.
+    """
     folder = Path(folder)
-    images: list[dict] = []
+    paths: list[Path] = []
     ignored = 0
     for root, dirs, files in os.walk(folder):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for name in files:
             p = Path(root) / name
             if p.suffix.lower() in SUPPORTED_EXTS:
-                images.append({"path": str(p), "name": name, "time": image_time(p)})
+                paths.append(p)
             else:
                 ignored += 1
+
+    total = len(paths)
+    if progress:
+        progress(0, total)
+    images: list[dict] = []
+    for i, p in enumerate(paths, 1):
+        images.append({"path": str(p), "name": p.name, "time": image_time(p)})
+        # Reporting every file would cost more than the EXIF read on a fast disk.
+        if progress and (i % 25 == 0 or i == total):
+            progress(i, total)
     images.sort(key=lambda im: im["time"])
     return {"folder": str(folder), "images": images, "ignored": ignored}
 

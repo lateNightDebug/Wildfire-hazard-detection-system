@@ -174,14 +174,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.review_proc = None
     app.state.report_jobs = {}  # run_id -> report generation status
     app.state.cloud_jobs = {}   # run_id -> cloud upload status
+    app.state.scan_progress = {"state": "idle"}  # mission-folder scan, polled by the page
 
     def _scan_cached(folder: str) -> dict:
-        """Scan the mission folder, reusing the result while nothing changed."""
+        """Scan the mission folder, reusing the result while nothing changed.
+
+        Publishes progress to app.state so the page can poll it: the scan is one
+        blocking request that reads EXIF from every image, which on a full SD
+        card runs long enough to look like a hang.
+        """
         sig = ingest.folder_signature(Path(folder))
         cached = app.state.source_cache.get(folder)
         if cached and cached[0] == sig:
+            app.state.scan_progress = {"state": "idle"}
             return cached[1]
-        result = ingest.scan_source(folder)
+
+        def report(done: int, total: int) -> None:
+            app.state.scan_progress = {"state": "scanning", "done": done,
+                                       "total": total, "folder": folder}
+
+        app.state.scan_progress = {"state": "scanning", "done": 0, "total": 0,
+                                   "folder": folder}
+        try:
+            result = ingest.scan_source(folder, progress=report)
+        finally:
+            app.state.scan_progress = {"state": "idle"}
         app.state.source_cache[folder] = (sig, result)
         return result
 
@@ -470,6 +487,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return {"folder": folder, "exists": False, "sessions": []}
         return _source_payload(folder)
 
+    @app.get("/api/source/progress")
+    def api_source_progress():
+        """Polled while a scan is in flight; the scan itself blocks its own request."""
+        return getattr(app.state, "scan_progress", None) or {"state": "idle"}
+
     @app.post("/api/source")
     def api_set_source(body: SourceBody):
         folder = body.folder.strip().strip('"')
@@ -753,6 +775,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         ok, message = cloud_sync.test_connection(app.state.settings)
         return {"ok": ok, "message": message}
+
+    @app.get("/api/cloud/jobs")
+    def api_cloud_jobs():
+        """In-memory upload state, for the header status chip. No network call."""
+        return {"jobs": [{"run_id": k, "state": v.get("state")}
+                         for k, v in (app.state.cloud_jobs or {}).items()]}
 
     @app.get("/api/cloud/runs")
     def api_cloud_runs():

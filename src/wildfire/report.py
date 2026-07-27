@@ -675,11 +675,8 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path,
 def has_imagery(images: list[ImageResult]) -> bool:
     """Is there a single renderable frame in this run?
 
-    Two ways there is not: the run was imported from the cloud as results only
-    (findings synced, photos stayed on the machine that flew it), or the folders
-    were deleted to reclaim disk, which the manual actively suggests. Either way
-    the detail pages and the gallery would be pages of placeholder dashes, so
-    they are skipped and the report goes cover -> summary -> map -> AI -> index.
+    False for a cloud-imported results-only run, and for one whose folders were
+    deleted to reclaim disk. Both would otherwise emit pages of placeholder dashes.
     """
     for im in images:
         for p in (im.annotated_path, im.orig_display_path, im.density_path):

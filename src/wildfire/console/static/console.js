@@ -146,9 +146,48 @@ function renderNav(active) {
       ${tab("settings", "Settings", "/settings")}
     </div>
     <div class="nav-right">
-      <div class="live"><span class="live-dot"></span><span class="mono">Local · Offline</span></div>
+      <div class="live" id="live-status" title="Detection and reports always run on this machine.">
+        <span class="live-dot"></span><span class="mono">Local</span>
+      </div>
     </div>`;
+  refreshStatus();
 }
+
+/* The chip used to read "Local - Offline" no matter what, which stopped being
+   true once cloud sync landed: a run could be uploading and the header still
+   claimed offline. It now reports what is actually happening. Processing is
+   always local, so that half never changes; only the cloud half does. */
+const STATUS = {
+  local:    { dot: "var(--green-2)", text: "Local", title: "Everything runs on this machine. Cloud sync is off." },
+  cloud:    { dot: "var(--green-2)", text: "Local · Cloud on", title: "Processing is local. Cloud sync is enabled." },
+  syncing:  { dot: "var(--amber)",   text: "Local · Syncing…", title: "Uploading results to the cloud container." },
+  error:    { dot: "var(--red)",     text: "Local · Sync failed", title: "The last cloud upload failed. See the run's Scan Detail page." },
+};
+
+function setStatus(kind) {
+  const el = document.getElementById("live-status");
+  if (!el) return;
+  const s = STATUS[kind] || STATUS.local;
+  el.title = s.title;
+  el.querySelector(".live-dot").style.background = s.dot;
+  el.querySelector(".mono").textContent = s.text;
+}
+
+async function refreshStatus() {
+  try {
+    const { values } = await api("/api/settings");
+    if (!values.cloud_enabled) return setStatus("local");
+    // Any upload still running anywhere outranks the idle "cloud on" state.
+    const jobs = await api("/api/cloud/jobs").catch(() => ({ jobs: [] }));
+    const states = (jobs.jobs || []).map(j => j.state);
+    setStatus(states.includes("running") ? "syncing"
+              : states.includes("error") ? "error" : "cloud");
+  } catch (e) {
+    setStatus("local");  // settings unreachable: say the safe, true thing
+  }
+}
+// Cheap poll; the endpoint reads in-memory job state, no network of its own.
+setInterval(refreshStatus, 4000);
 
 // Load branding once; re-render the nav and recolor when it arrives.
 api("/api/branding").then(b => {
@@ -209,10 +248,14 @@ function gpsToPercent(pins) {
   }));
 }
 
+/* 5 decimals, not 3. Sites are deduped at 40 m, but 0.001 degrees is ~111 m of
+   latitude and ~70 m of longitude at this latitude, so neighbouring sites kept
+   printing the same coordinates and looked like duplicates. 5 decimals is ~1 m
+   and matches what the RTK GPS actually delivers. */
 function fmtCoord(lat, lon) {
   if (lat == null) return "no GPS";
   const ns = lat >= 0 ? "N" : "S", ew = lon >= 0 ? "E" : "W";
-  return `${Math.abs(lat).toFixed(3)}°${ns}, ${Math.abs(lon).toFixed(3)}°${ew}`;
+  return `${Math.abs(lat).toFixed(5)}°${ns}, ${Math.abs(lon).toFixed(5)}°${ew}`;
 }
 
 /* ---------------------------------------------------------------- shared map

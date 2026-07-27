@@ -97,13 +97,9 @@ def _read_credential(settings: Settings) -> str:
 def _ensure_container(container, name: str) -> None:
     """Make sure the container is there, without demanding account-level rights.
 
-    A container-scoped SAS - the credential we want people to use - can neither
-    create containers nor always probe for their existence; both come back as a
-    403. That is the intended setup, not a failure: the admin creates the
-    container once and hands out a narrow token. So a probe we are not allowed
-    to make is treated as "it exists", and a container that genuinely is not
-    there surfaces with a clear message from test_connection() or on the first
-    upload rather than blocking the client here.
+    A container-scoped SAS can neither create a container nor always probe for
+    one - both 403, and that is the intended setup, not a failure. A genuinely
+    missing container surfaces from test_connection() or the first upload.
     """
     try:
         if container.exists():
@@ -123,9 +119,8 @@ def _container_client(settings: Settings):
     2. SAS connection string          BlobEndpoint=...;SharedAccessSignature=...
     3. SAS URL from the portal        https://acct.blob.core.windows.net/name?sv=...
 
-    Form 3 is what the Azure portal's "Generate SAS" button actually gives you,
-    so accepting it directly saves the operator from hand-building a connection
-    string - which is where this normally goes wrong.
+    Form 3 is what the portal's "Generate SAS" button gives; taking it verbatim
+    avoids hand-building a connection string, which is where this usually breaks.
     """
     credential = _read_credential(settings)
     if not credential:
@@ -310,12 +305,9 @@ def _machine_name() -> str:
 def results_payload(run_dir: Path, run_id: str) -> dict:
     """Serialize a run's findings - no imagery, no PDF, no local paths.
 
-    Local absolute paths are stripped on purpose: `D:\\Sait\\...` means nothing on
-    another machine, and `_rel_url()` turns anything outside the output root into
-    None anyway, which is exactly the "no image available" the UI already draws.
-    Each image keeps `path` set to its own file name so ImageResult.from_dict()
-    still parses, and labels are re-keyed from path to name so they survive the
-    trip and match again on the far side.
+    `path` is reduced to the bare file name: enough for ImageResult.from_dict(),
+    and `_rel_url()` then yields None so the UI draws its "no image" state.
+    Labels are re-keyed path -> name so they still match after the trip.
     """
     batch = json.loads((run_dir / "batch.json").read_text(encoding="utf-8"))
     by_name = {str(im.get("path")): im.get("name") for im in batch.get("images") or []}

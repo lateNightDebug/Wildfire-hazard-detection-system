@@ -6,16 +6,32 @@
 <title>Settings — Wildfire Console</title>
 <link rel="stylesheet" href="/static/console.css">
 <style>
-  .form-row { display:grid; grid-template-columns: 180px 1fr; gap:12px; align-items:center; }
+  .form-row { display:grid; grid-template-columns: 165px 1fr; gap:10px; align-items:center; }
   .form-row label, .form-row .row-label { font-size:12px; font-weight:600; color:var(--text-2); }
-  .form-row .hint { font-size:11px; color:var(--muted-3); margin-top:3px; }
+  .form-row .hint { font-size:11px; color:var(--muted-3); margin-top:3px; line-height:1.45; }
   .input {
     font-size:12px; font-family:inherit; color:var(--text); background:#fff;
-    border:1px solid var(--border-2); border-radius:8px; padding:8px 10px; outline:none; width:100%;
+    border:1px solid var(--border-2); border-radius:8px; padding:7px 10px; outline:none; width:100%;
   }
   .input:focus { border-color: var(--green-line); }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
   .switch { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; }
+
+  /* CSS columns, not a 2-column grid. The grid pinned each card to a fixed
+     column, so the short left column (Detection, Severity) ran out while the
+     right one kept going and left half the page empty. Columns flow the cards
+     and balance the height on their own; break-inside keeps a card whole. */
+  .settings-cols { column-count: 2; column-gap: 16px; }
+  .settings-cols > .card { break-inside: avoid; margin: 0 0 16px; }
+  @media (max-width: 1080px) { .settings-cols { column-count: 1; } }
+
+  /* Long explanations are collapsed behind the field they belong to; the page
+     is a control panel, not a manual. */
+  .hint details > summary {
+    cursor:pointer; color:var(--muted-2); font-weight:600; list-style:none;
+  }
+  .hint details > summary::marker, .hint details > summary::-webkit-details-marker { display:none; }
+  .hint details > summary::before { content:"? "; }
+  .hint details[open] > summary { margin-bottom:4px; }
 </style>
 </head>
 <body>
@@ -30,8 +46,7 @@
     <button id="save" class="btn btn-primary">Save settings</button>
   </div>
 
-  <div class="grid2">
-    <div style="display:flex; flex-direction:column; gap:16px;">
+  <div class="settings-cols">
       <!-- MODELS -->
       <div class="card" style="padding:18px 20px;">
         <div style="font-size:13px; font-weight:600; margin-bottom:4px;">Detection models</div>
@@ -92,9 +107,7 @@
           <input class="input" id="severity_deadtrees_medium" type="number" step="1" min="0.5">
         </div>
       </div>
-    </div>
 
-    <div style="display:flex; flex-direction:column; gap:16px;">
       <!-- REPORT / LLM -->
       <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
         <div style="font-size:13px; font-weight:600;">Report · AI analysis (LM Studio)</div>
@@ -194,13 +207,14 @@
               <option value="full">Everything — imagery and PDF as well</option>
             </select>
             <div class="hint">
-              <b>Results only</b> sends one small JSON file per run: about 40 KB for a
-              58-image flight, roughly 1 MB for a 1,500-image mission. Photos never leave
-              this machine, so another machine sees the map, the counts and the confirmed
-              boxes but not the imagery.<br>
-              <b>Everything</b> also uploads originals, annotated frames, grid maps and the
-              PDF &mdash; the same 58-image flight is about 1.7 GB. Only worth it as an
-              off-site backup of the whole run.
+              ~40 KB per 58-image flight; photos never leave this machine.
+              <details><summary>how the two compare</summary>
+                <b>Results only</b> sends detections, GPS and confirmed boxes &mdash; about
+                1 MB for a 1,500-image mission. Another machine sees the map and the counts,
+                not the imagery.<br>
+                <b>Everything</b> adds originals, annotated frames, grid maps and the PDF:
+                the same flight is ~1.7 GB. Worth it only as a full off-site backup.
+              </details>
             </div>
           </div>
         </div>
@@ -214,17 +228,17 @@
             <input class="input" id="azure_connection_string" type="password" spellcheck="false"
                    placeholder="https://account.blob.core.windows.net/wildfire-runs?sv=...&amp;sig=...">
             <div class="hint">
-              <b>Prefer a SAS URL.</b> In the Azure portal open the container &rarr;
-              <i>Shared access tokens</i> &rarr; permissions <span class="mono">Read, Write, List</span>
-              (leave <span class="mono">Delete</span> off), set an expiry, then paste the
-              generated <i>Blob SAS URL</i> here. It only reaches this one container and
-              stops working on its own.<br>
-              A full connection string containing <span class="mono">AccountKey=</span> also
-              works, but that key grants read/write/<b>delete</b> over the entire storage
-              account and never expires &mdash; avoid copying it onto field laptops.<br>
-              Stored in <span class="mono">config/settings.json</span>. On shared machines set
-              <span class="mono">AZURE_STORAGE_CONNECTION_STRING</span> instead &mdash; it wins
-              over this field and keeps the secret off disk.
+              Prefer a SAS URL &mdash; it reaches one container and expires.
+              <details><summary>how to generate one</summary>
+                Azure portal &rarr; the container &rarr; <i>Shared access tokens</i> &rarr;
+                permissions <span class="mono">Read, Write, List</span> (leave
+                <span class="mono">Delete</span> off) &rarr; set an expiry &rarr; copy the
+                <i>Blob SAS URL</i>.<br>
+                A connection string with <span class="mono">AccountKey=</span> also works, but
+                that key never expires and grants delete over the whole account.<br>
+                Stored in <span class="mono">config/settings.json</span>; on shared machines set
+                <span class="mono">AZURE_STORAGE_CONNECTION_STRING</span> instead.
+              </details>
             </div>
           </div>
         </div>
@@ -261,7 +275,6 @@
           </div>
         </div>
       </div>
-    </div>
   </div>
 </div>
 

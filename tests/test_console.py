@@ -52,18 +52,39 @@ def _make_run(tmp_path, name="console_20260710_120000", *, flame=0, smoke=0, dea
 
 # ------------------------------------------------------------------ severity
 def test_display_severity_ladder():
-    # flame always escalates to high
-    assert display_severity({"Flame": 1, "Dead Tree": 1}, 10) == "high"
-    # dead-tree density per image drives the ladder (defaults: 10 / 3 per image)
-    assert display_severity({"Dead Tree": 100}, 10) == "high"
-    assert display_severity({"Dead Tree": 30}, 10) == "medium"
-    assert display_severity({"Dead Tree": 5}, 10) == "low"
-    # smoke floors at medium even with few dead trees
-    assert display_severity({"Smoke": 1, "Dead Tree": 2}, 10) == "medium"
-    assert display_severity({"Fallen Log": 1}, 10) == "low"
-    assert display_severity({}, 10) is None
-    # zero image_count must not divide by zero
-    assert display_severity({"Dead Tree": 12}, 0) == "high"
+    """The ladder itself, with thresholds passed in.
+
+    Thresholds are calibration and get retuned when the detector changes, so
+    they are given explicitly here - otherwise this test fails for a reason that
+    has nothing to do with the logic it covers.
+    """
+    sev = lambda counts, n: display_severity(counts, n, dead_high=10, dead_medium=3)
+
+    assert sev({"Flame": 1, "Dead Tree": 1}, 10) == "high"  # flame always escalates
+    assert sev({"Dead Tree": 100}, 10) == "high"
+    assert sev({"Dead Tree": 30}, 10) == "medium"
+    assert sev({"Dead Tree": 5}, 10) == "low"
+    assert sev({"Smoke": 1, "Dead Tree": 2}, 10) == "medium"  # smoke floors at medium
+    assert sev({"Fallen Log": 1}, 10) == "low"
+    assert sev({}, 10) is None
+    assert sev({"Dead Tree": 12}, 0) == "high"  # zero images must not divide by zero
+
+
+def test_default_severity_thresholds_separate_real_densities():
+    """The defaults must actually grade real imagery into more than one level.
+
+    They did not: at 10 / 3 per image every frame of the May flight (27..102 dead
+    trees, median 60) came out High and the badge was decoration. These are the
+    real quartiles, so a regression back to token thresholds fails here.
+    """
+    low_frame = {"Dead Tree": 30}       # p10 of the real distribution
+    typical = {"Dead Tree": 60}         # median
+    dense = {"Dead Tree": 95}           # p95
+
+    assert display_severity(low_frame, 1) == "low"
+    assert display_severity(typical, 1) == "medium"
+    assert display_severity(dense, 1) == "high"
+    assert len({display_severity(c, 1) for c in (low_frame, typical, dense)}) == 3
 
 
 # ------------------------------------------------------------------ discovery
