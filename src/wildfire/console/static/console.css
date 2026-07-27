@@ -307,8 +307,16 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 .risk-hero.medium { background: linear-gradient(135deg, #9F6D00, #9F6D00cc); box-shadow: 0 2px 10px rgba(159,109,0,.25); }
 .risk-hero.low    { background: linear-gradient(135deg, #338733, #338733cc); box-shadow: 0 2px 10px rgba(51,135,51,.25); }
 .risk-hero.none   { background: linear-gradient(135deg, #777770, #777770cc); }
-.preview-box { position: relative; background: #161a1b; min-height: 380px; display: flex; align-items: center; justify-content: center; }
-.preview-box img { max-width: 100%; max-height: 62vh; display: block; }
+/* Fixed height, not min-height. The box used to size itself to whichever image
+   had loaded, so every frame change resized it and shoved the thumbnail strip
+   and everything below up or down - a flicker on every click, in the one place
+   the operator clicks hundreds of times. A constant height letterboxes an odd
+   aspect ratio against the dark backdrop, which is the cheaper cost. */
+.preview-box {
+  position: relative; background: #161a1b; height: 62vh; min-height: 340px;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.preview-box img { max-width: 100%; max-height: 100%; display: block; }
 .thumb-strip { display: flex; gap: 10px; padding: 12px 16px; overflow-x: auto; }
 .thumb-wrap { position: relative; flex-shrink: 0; }
 .thumb {

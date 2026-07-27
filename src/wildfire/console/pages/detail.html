@@ -64,15 +64,15 @@
          thumbnail strip scrolls inside its card instead of stretching the page. -->
     <div style="display:flex; flex-direction:column; gap:16px; min-width:0;">
       <div class="card" style="overflow:hidden;">
-        <!-- Two rows, not one. Title, review counter, review button, three view
-             toggles, zoom hints, file name and index were all competing on a
-             single line. Controls stay on top; which image you are looking at
-             moves to its own quiet strip. The zoom hints were the least useful
-             thing there and are now a tooltip on the image itself. -->
-        <div class="card-head" style="padding:11px 16px 9px;">
+        <!-- One row. The file name and index used to sit here as well, but the
+             sidebar's "This image" card now owns which frame you are on, and
+             printing it twice on the same screen just added noise. What stays is
+             what acts on the viewer. -->
+        <div class="card-head" style="padding:11px 16px;">
           <div style="display:flex; align-items:center; gap:10px; min-width:0;">
             <span class="card-title" id="viewer-title">Detection Preview</span>
             <span class="mono" style="font-size:11px; color:var(--muted-3);" id="review-progress"></span>
+            <span class="mono" style="font-size:10px; color:var(--muted-3);" id="zoom-hint"></span>
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
             <button id="mark-reviewed" class="btn-quiet" style="padding:5px 11px; font-size:12px;">&#10003; Mark reviewed</button>
@@ -82,12 +82,6 @@
               <button data-v="gridmap">Grid</button>
             </div>
           </div>
-        </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;
-                    padding:0 16px 9px; border-bottom:1px solid var(--line);">
-          <span class="mono" style="font-size:11px; color:var(--muted-2); overflow:hidden;
-                text-overflow:ellipsis; white-space:nowrap;" id="preview-name"></span>
-          <span class="mono" style="font-size:10px; color:var(--muted-3); flex-shrink:0;" id="zoom-hint"></span>
         </div>
 
         <div class="edit-bar" id="edit-bar" style="display:none;">
@@ -109,12 +103,6 @@
         </div>
         <div class="thumb-strip" id="thumbs"></div>
       </div>
-
-      <div class="card" style="overflow:hidden;" id="det-table-card">
-        <div class="card-head"><span class="card-title" id="det-table-title">Detections in this image</span>
-          <span class="mono" style="font-size:11px; color:var(--muted-3);" id="det-count"></span></div>
-        <div id="det-table"></div>
-      </div>
     </div>
 
     <!-- right: THIS IMAGE first, then the run. The panel used to describe only
@@ -132,6 +120,18 @@
              overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="img-name"></div>
         <div style="display:flex; align-items:center; gap:7px; margin-top:9px;" id="img-badges"></div>
         <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;" id="img-rows"></div>
+      </div>
+
+      <!-- Moved here from under the viewer. It is per-image data, so it belongs
+           with the per-image card, and it fills the column that was otherwise
+           empty below the fold. Scrolls internally: a dense frame carries 60+
+           boxes and the list must not stretch the page. -->
+      <div class="card" style="overflow:hidden; display:flex; flex-direction:column;" id="det-table-card">
+        <div class="card-head" style="padding:12px 16px;">
+          <span class="card-title" id="det-table-title">Detections in this image</span>
+          <span class="mono" style="font-size:11px; color:var(--muted-3);" id="det-count"></span>
+        </div>
+        <div id="det-table" style="overflow-y:auto; max-height:38vh;"></div>
       </div>
 
       <details class="card" id="run-details" style="padding:0;">
@@ -324,7 +324,7 @@ function drawPreview() {
          ${EDIT ? overlaySvg(im) : ""}
        </div>`
     : `<span class="mono" style="color:#cdd6c0; opacity:.5; font-size:12px; text-align:center; line-height:1.7;">${empty}</span>`;
-  document.getElementById("preview-name").textContent = `${im.name} · ${curImage + 1} / ${ims.length}`;
+  // File name and index live in the sidebar's "This image" card now.
   document.getElementById("thumbs").innerHTML = ims.map((t, i) => {
     const kind = imgKind(t);
     // Check only images the operator explicitly marked reviewed (not auto).
