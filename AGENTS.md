@@ -151,6 +151,17 @@ outputs/<run>_<timestamp>/
 - **Severity (High/Medium/Low) is display-only**, derived from detection type
   and dead-tree density (thresholds in settings). It is never stored in
   batch.json/labels.json and never appears as a data field.
+- **A run's badge is its WORST image, never a verdict on the run.** Flame in one
+  frame makes the whole run High, which is correct for triage and misleading on
+  its own -- a real 58-image flight reads High off 6 flame frames while the mix
+  is 14 high / 28 medium / 16 low. Always show `severity_mix` and `flame_images`
+  beside the badge. Thresholds are calibrated to real density (27..102 per
+  frame, median 60); the original 10/3 graded every frame High. Recalibrate when
+  the detector changes.
+- **`batch_info["device"]` is the GPU, `batch_info["machine"]` is the computer.**
+  Reports and "Processed on" use the machine; a graphics-card model does not
+  belong in a document handed to a client. Runs predating `machine` show the
+  device under the honest label "Compute device" rather than faking a host name.
 - **Map/box colors encode hazard TYPE**: flame red `#E05555`, smoke slate
   `#546E7A`, dead tree bone `#D9CDB0`, and each type also carries an icon
   (flame / puff / bare trunk) so color is never the only channel. Severity

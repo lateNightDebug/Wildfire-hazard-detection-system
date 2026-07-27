@@ -191,11 +191,15 @@ function drawRecent() {
   document.getElementById("recent").innerHTML = list.map(s => `
     <a href="/scans/${encodeURIComponent(s.id)}" style="display:flex; align-items:center; justify-content:space-between; padding:13px 18px; border-bottom:1px solid var(--line-soft);"
        onmouseover="this.style.background='#faf9f4'" onmouseout="this.style.background=''">
-      <div style="display:flex; flex-direction:column; line-height:1.3;">
+      <div style="display:flex; flex-direction:column; line-height:1.3; min-width:0;">
         <span style="font-size:13px; font-weight:600;">${esc(s.date)} <span class="mono" style="font-weight:400; color:var(--muted-2);">${esc(s.time)}</span></span>
         <span class="mono" style="font-size:11px; color:var(--muted-2);">${esc(s.id)} · ${s.images} images · ${esc(countsLine(s.detections_by_type))}</span>
+        <span style="font-size:11px; color:var(--muted-2); margin-top:3px;">${sevMixText(s.severity_mix, s.flame_images)}</span>
       </div>
-      ${sevBadge(s.severity)}
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex-shrink:0;">
+        ${sevBadge(s.severity)}
+        ${sevMixBar(s.severity_mix, s.images)}
+      </div>
     </a>`).join("") ||
     '<div class="empty">No scans yet — run a detection from the Scans page.</div>';
 }

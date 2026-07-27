@@ -330,6 +330,13 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 .kv { display: flex; justify-content: space-between; font-size: 12px; }
 .kv .k { color: var(--muted-2); }
 .kv .v { color: var(--text); font-weight: 500; font-family: var(--mono); }
+/* Per-image severity composition of a run, shown beside the worst-frame badge. */
+.sev-mix {
+  display: inline-flex; width: 84px; height: 6px; border-radius: 3px;
+  overflow: hidden; background: #f0efe8; vertical-align: middle; flex-shrink: 0;
+}
+.sev-mix > span { display: block; height: 100%; }
+
 .hbar { height: 6px; border-radius: 4px; background: #f0efe8; overflow: hidden; }
 .hbar > div { height: 100%; border-radius: 4px; background: var(--green-2); }
 .view-toggle { display: flex; gap: 4px; }

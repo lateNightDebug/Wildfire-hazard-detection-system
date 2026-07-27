@@ -54,21 +54,30 @@
          thumbnail strip scrolls inside its card instead of stretching the page. -->
     <div style="display:flex; flex-direction:column; gap:16px; min-width:0;">
       <div class="card" style="overflow:hidden;">
-        <div class="card-head" style="padding:13px 16px;">
-          <div style="display:flex; align-items:center; gap:10px;">
+        <!-- Two rows, not one. Title, review counter, review button, three view
+             toggles, zoom hints, file name and index were all competing on a
+             single line. Controls stay on top; which image you are looking at
+             moves to its own quiet strip. The zoom hints were the least useful
+             thing there and are now a tooltip on the image itself. -->
+        <div class="card-head" style="padding:11px 16px 9px;">
+          <div style="display:flex; align-items:center; gap:10px; min-width:0;">
             <span class="card-title" id="viewer-title">Detection Preview</span>
             <span class="mono" style="font-size:11px; color:var(--muted-3);" id="review-progress"></span>
           </div>
-          <div style="display:flex; align-items:center; gap:12px;">
+          <div style="display:flex; align-items:center; gap:10px;">
             <button id="mark-reviewed" class="btn-quiet" style="padding:5px 11px; font-size:12px;">&#10003; Mark reviewed</button>
             <div class="view-toggle" id="view-toggle">
               <button data-v="annotated" class="on">Annotated</button>
               <button data-v="original">Original</button>
               <button data-v="gridmap">Grid</button>
             </div>
-            <span class="mono" style="font-size:10px; color:var(--muted-3);" id="zoom-hint">wheel: zoom · drag: pan · dbl-click: reset</span>
-            <span class="mono" style="font-size:11px; color:var(--muted-3);" id="preview-name"></span>
           </div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;
+                    padding:0 16px 9px; border-bottom:1px solid var(--line);">
+          <span class="mono" style="font-size:11px; color:var(--muted-2); overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap;" id="preview-name"></span>
+          <span class="mono" style="font-size:10px; color:var(--muted-3); flex-shrink:0;" id="zoom-hint"></span>
         </div>
 
         <div class="edit-bar" id="edit-bar" style="display:none;">
@@ -144,9 +153,17 @@ const LABEL_COLORS = {
   "Smoke": KIND.smoke.color,
   "Fallen Log": "#7C4DFF",
 };
+/* What earned the badge - phrased as "the worst image", because that is what it
+   measures. SEV_NOTE is the fallback for runs with no per-image breakdown. */
+const SEV_DRIVER = {
+  high: "Driven by the worst image: flame, or heavy dead-tree density.",
+  medium: "Driven by the worst image: smoke, or elevated dead-tree density.",
+  low: "Worst image holds scattered dead trees. Schedule field verification.",
+  none: "No hazards detected in this scan.",
+};
 const SEV_NOTE = {
-  high: "Flame detected or heavy dead-tree density. Immediate review recommended — dispatch field team to verify.",
-  medium: "Smoke detected or elevated dead-tree density. Review the flagged images and verify on site.",
+  high: "Flame or heavy dead-tree density in this run. Review and verify on site.",
+  medium: "Smoke or elevated dead-tree density. Review the flagged images.",
   low: "Scattered dead trees / other hazards detected. Schedule field verification.",
   none: "No hazards detected in this scan.",
 };
@@ -161,9 +178,10 @@ let panning = null;
 function applyZoom() {
   const st = document.getElementById("stage");
   if (st) st.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  // Only shown while zoomed; at 1x it was permanent instructions taking space
+  // from the header. The image itself carries the hint as a tooltip.
   document.getElementById("zoom-hint").textContent =
-    zoom > 1 ? `${zoom.toFixed(1)}× · drag: pan · dbl-click: reset`
-             : "wheel: zoom · drag: pan · dbl-click: reset";
+    zoom > 1 ? `${zoom.toFixed(1)}× · drag: pan · dbl-click: reset` : "";
 }
 
 function resetZoom() { zoom = 1; panX = panY = 0; applyZoom(); }
@@ -265,7 +283,8 @@ function drawPreview() {
        <span style="opacity:.7;">detections and GPS are here; the photos stayed on that machine</span>`
     : esc(im.error || "image unavailable");
   box.innerHTML = url
-    ? `<div id="stage" style="position:relative; line-height:0;">
+    ? `<div id="stage" style="position:relative; line-height:0;"
+            title="wheel: zoom · drag: pan · double-click: reset">
          <img id="stage-img" src="${esc(url)}" alt="${esc(im.name)}" draggable="false">
          ${EDIT ? overlaySvg(im) : ""}
        </div>`
@@ -570,7 +589,14 @@ function drawSession() {
     kv("GPS", DETAIL.gps ? fmtCoord(DETAIL.gps[0], DETAIL.gps[1]) : "not embedded"),
     kv("Images", DETAIL.images),
     kv("Detectors", bi.model_count ?? "—"),
-    kv("Processed on", bi.device || "—"),
+    // Which computer produced the run, GPU as a tooltip. Runs made before
+    // `machine` was recorded only have the device string, so they are labelled
+    // for what that actually is rather than passing a graphics card off as a
+    // machine name.
+    bi.machine
+      ? `<div class="kv" title="${esc(bi.device || "")}"><span class="k">Processed on</span>` +
+        `<span class="v">${esc(bi.machine)}</span></div>`
+      : kv("Compute device", bi.device || "—"),
     kv("Conf / slice", bi.conf_threshold != null ? `${bi.conf_threshold} / ${bi.slice_size}px` : "—"),
     kv("Generated", bi.generated_at || DETAIL.created),
   ].join("");
@@ -602,10 +628,20 @@ function draw() {
     }
   }
 
+  /* The hero states the WORST image, and then says how the run is actually made
+     up. It used to assert "Flame detected or heavy dead-tree density" over the
+     whole run, so a flight with flame in 6 of 58 frames read as if all 58 were
+     alight. The label says which image drove it; the note gives the spread. */
   const hero = document.getElementById("risk-hero");
+  const mix = DETAIL.severity_mix;
   hero.className = "risk-hero " + sev;
   document.getElementById("risk-label").textContent = sev === "none" ? "Clear" : SEV[sev].label;
-  document.getElementById("risk-note").textContent = SEV_NOTE[sev];
+  document.getElementById("risk-note").innerHTML = mix
+    ? `${esc(SEV_DRIVER[sev] || "")}<br><span style="opacity:.85;">Across ${DETAIL.images} images: `
+      + `${["high", "medium", "low"].filter(k => mix[k]).map(k => `${mix[k]} ${SEV[k].label.toLowerCase()}`).join(", ")}`
+      + `${mix.none ? `, ${mix.none} clear` : ""}`
+      + `${DETAIL.flame_images ? ` &middot; flame in ${DETAIL.flame_images}` : ""}.</span>`
+    : esc(SEV_NOTE[sev] || "");
 
   drawPreview(); drawDetTable(); drawSummary(); drawSession();
 }

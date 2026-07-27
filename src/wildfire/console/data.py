@@ -55,6 +55,28 @@ def display_severity(counts_by_type: dict, image_count: int,
     return None
 
 
+def _severity_mix(images: list[dict], settings: Settings) -> tuple[dict, int]:
+    """Grade each frame separately: how many high / medium / low / clear.
+
+    A run badge can only report its worst frame, and that is the right answer to
+    "is there anything urgent in here" - but on its own it is misleading. One
+    real 58-image flight reads HIGH off 6 flame frames while the other 52 are 14
+    high, 28 medium and 16 low. Showing the mix beside the badge is what stops
+    "flame in 6 images" from looking like "58 bad images".
+    """
+    hi, med = settings.severity_deadtrees_high, settings.severity_deadtrees_medium
+    mix = {"high": 0, "medium": 0, "low": 0, "none": 0}
+    flame_images = 0
+    for im in images:
+        counts: dict[str, int] = {}
+        for d in im.get("detections") or []:
+            counts[d.get("display", "?")] = counts.get(d.get("display", "?"), 0) + 1
+        if counts.get("Flame"):
+            flame_images += 1
+        mix[display_severity(counts, 1, hi, med) or "none"] += 1
+    return mix, flame_images
+
+
 def _parse_run_timestamp(run_name: str) -> Optional[datetime]:
     """Run folders end with _YYYYmmdd_HHMMSS (review_..., console_..., etc.)."""
     m = re.search(r"(\d{8})_(\d{6})$", run_name)
@@ -139,6 +161,7 @@ def scan_summary(run_dir: Path, settings: Settings) -> Optional[dict]:
         previews = [u for u in (_rel_url(im.get("annotated_path"), output_root)
                                 for im in images[:4]) if u]
 
+    mix, flame_images = _severity_mix(images, settings)
     return {
         "id": run_dir.name,
         "created": ts.isoformat(timespec="seconds"),
@@ -147,9 +170,13 @@ def scan_summary(run_dir: Path, settings: Settings) -> Optional[dict]:
         "images": image_count,
         "detections_by_type": counts,
         "total_detections": sum(counts.values()),
+        # The WORST frame in the run, not a verdict on the run. `severity_mix`
+        # carries the rest; see _severity_mix for why both are needed.
         "severity": display_severity(counts, image_count,
                                      settings.severity_deadtrees_high,
                                      settings.severity_deadtrees_medium),
+        "severity_mix": mix,
+        "flame_images": flame_images,
         "reviewed": reviewed,
         "has_report": report is not None,
         "report_url": _rel_url(str(report), output_root) if report else None,

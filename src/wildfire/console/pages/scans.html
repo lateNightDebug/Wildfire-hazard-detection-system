@@ -579,7 +579,11 @@ function drawTable() {
       </div>
       <span style="font-size:13px; color:var(--text-2);">${esc(countsLine(s.detections_by_type))}${s.reviewed ? ' <span class="badge low" style="margin-left:6px;">REVIEWED</span>' : ""}</span>
       <span class="mono" style="font-size:13px; text-align:right; color:var(--text-2);">${s.images || "—"}</span>
-      <div>${sevBadge(s.severity)}</div>
+      <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;"
+           title="${esc(s.flame_images ? `flame in ${s.flame_images} of ${s.images} images` : "worst image in this run")}">
+        ${sevBadge(s.severity)}
+        ${sevMixBar(s.severity_mix, s.images)}
+      </div>
       <span>${statusChip(s)}</span>
       <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px;">${actionCell(s)}</div>
     </div>`).join("") ||

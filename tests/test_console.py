@@ -70,6 +70,44 @@ def test_display_severity_ladder():
     assert sev({"Dead Tree": 12}, 0) == "high"  # zero images must not divide by zero
 
 
+def test_scan_summary_reports_the_severity_mix_not_just_the_worst(tmp_path):
+    """A run badge is its worst frame; the mix says what the rest look like.
+
+    Without this, a flight with flame in one image out of many reads as though
+    every image were on fire - which is exactly what the badge alone implied.
+    """
+    from src.wildfire.console.data import scan_summary
+
+    settings = _settings(tmp_path)
+    run = tmp_path / "console_20260101_000000"
+    run.mkdir(parents=True)
+
+    def frame(name, dead, flame=0):
+        dets = [{"cls_name": "dead", "display": "Dead Tree", "score": 0.9,
+                 "xyxy": [0, 0, 5, 5]} for _ in range(dead)]
+        dets += [{"cls_name": "fire", "display": "Flame", "score": 0.8,
+                  "xyxy": [0, 0, 5, 5]} for _ in range(flame)]
+        return {"path": name, "name": name, "width": 10, "height": 10,
+                "gps": None, "detections": dets, "flagged": bool(dets)}
+
+    images = [frame("a.jpg", 5, flame=1),  # flame -> high, on its own
+              frame("b.jpg", 90),          # >= 80 -> high
+              frame("c.jpg", 50),          # >= 45 -> medium
+              frame("d.jpg", 10),          # -> low
+              frame("e.jpg", 0)]           # -> none
+    (run / "batch.json").write_text(json.dumps({
+        "batch_info": {"image_count": len(images)},
+        "stats": {"detections_by_type": {"Dead Tree": 155, "Flame": 1}},
+        "images": images,
+    }), encoding="utf-8")
+
+    s = scan_summary(run, settings)
+    assert s["severity"] == "high"          # worst frame still drives the badge
+    assert s["flame_images"] == 1           # ...but only one image has flame
+    assert s["severity_mix"] == {"high": 2, "medium": 1, "low": 1, "none": 1}
+    assert sum(s["severity_mix"].values()) == len(images)
+
+
 def test_default_severity_thresholds_separate_real_densities():
     """The defaults must actually grade real imagery into more than one level.
 

@@ -25,6 +25,16 @@ def pick_device() -> str:
     return "cpu"
 
 
+def machine_name() -> str:
+    """Host name - which computer produced a run, for reports and cloud ownership."""
+    import socket
+
+    try:
+        return socket.gethostname() or "unknown"
+    except Exception:
+        return "unknown"
+
+
 def device_label() -> str:
     """Human-readable device description for logs/UI (e.g. 'cuda:0 (<GPU name>)')."""
     dev = pick_device()

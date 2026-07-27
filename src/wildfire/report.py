@@ -308,9 +308,12 @@ def _cover(batch: BatchResult) -> list:
     ]
     if bi.get("operator"):
         info.append(["Operator", _pdf_safe(str(bi["operator"]))])
+    # The computer, when we know it. The GPU model that used to sit here is an
+    # internal detail and does not belong in a report handed to a client.
+    if bi.get("machine"):
+        info.append(["Processed on", _pdf_safe(str(bi["machine"]))])
     info += [
         ["Generated", str(bi.get("generated_at", ""))],
-        ["Device", str(bi.get("device", ""))],
         ["Images processed", str(s.get("images_processed", 0))],
         ["Flagged with hazards", str(s.get("flagged_images", 0))],
         ["Total detections", f"{s.get('total_detections', 0)}  ({_fmt_counts(s.get('detections_by_type', {}))})"],

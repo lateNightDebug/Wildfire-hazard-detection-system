@@ -284,6 +284,37 @@ Repo rule: commits carry no AI signature lines.
       import; hidden entirely when cloud sync is off
 - [x] Suite **102 -> 111** tests
 
+## Batch 19 - severity honesty, upload and layout fixes (2026-07-27)
+
+- [x] **Severity thresholds recalibrated against real imagery**: frames hold
+      27..102 dead trees (median 60) but High started at 10, so all 67 frames,
+      5 runs and 14 sites graded High and the badge meant nothing. Now 80 / 45
+      (~p85 / ~p22): the same data gives 1 High + 4 Medium runs and sites split
+      6 / 6 / 2. The ladder test now passes thresholds explicitly instead of
+      asserting the constants
+- [x] **A run badge is the worst image, and now says so**: `severity_mix` and
+      `flame_images` ride alongside it, with a stacked bar on the Scans table and
+      Dashboard. The 58-image run reads "flame in 6 images - 14 high, 28 medium,
+      16 low" instead of a bare HIGH implying 58 bad frames
+- [x] **Duplicate site coordinates were a display bug, not clustering**: the
+      pairs are 49 m and 77 m apart, correctly separated by the 40 m dedup, but
+      printed at 3 decimals (~111 m lat / ~70 m lon here). Now 5 decimals
+- [x] **Upload could only ever take one image**: each visit to the file dialog
+      replaced the selection, and the dropzone hid once anything was picked so
+      there was no way back. Picking now accumulates and de-duplicates; the whole
+      page accepts a drop; Mission Folder carries the upload button
+- [x] **Mission-folder scan shows real progress**: 12.2 s of silence for 21,200
+      images, since every image costs an EXIF read. `scan_source()` reports
+      progress and the page polls it beside the blocking request
+- [x] **GPU model no longer presented as identity**: `batch_info["machine"]`
+      records the host name; reports and "Processed on" use it, and the graphics
+      card is gone from the PDF entirely
+- [x] Layout: detector status shrunk from the top card to one line; Settings
+      moved from a fixed 2-column grid (which left half the page empty) to
+      balanced CSS columns; Scan Detail's overloaded header split in two
+- [x] Docstrings trimmed 109 lines -> 62, none now longer than its own function
+- [x] Suite **112 -> 113** tests
+
 ## Waiting on external conditions
 
 - [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it

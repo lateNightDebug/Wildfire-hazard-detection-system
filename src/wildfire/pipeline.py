@@ -17,7 +17,7 @@ import numpy as np
 
 from .annotate import draw_boxes, grid_density_map
 from .config import Settings
-from .device import device_label
+from .device import device_label, machine_name
 from .gps import extract_altitude, extract_camera, extract_timestamp, get_location, mrk_location
 from .imageio_utils import PASSTHROUGH_EXTS, load_rgb_uint8
 from .risk import batch_stats
@@ -145,6 +145,10 @@ def run_batch(
         "batch_label": batch_label or out.name,
         "operator": settings.operator_name,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        # Which COMPUTER ran this, for the report and for cloud ownership. The
+        # GPU string below answers "why was this fast/slow" and is diagnostics,
+        # not identity - two laptops can carry the same card.
+        "machine": machine_name(),
         "device": device_label(),
         "model_count": len(detectors),
         "conf_threshold": settings.conf_threshold,

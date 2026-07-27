@@ -84,6 +84,34 @@ function sevBadge(sev) {
   return `<span class="badge ${sev}">${SEV[sev].label}</span>`;
 }
 
+/* A run's badge is its WORST frame. On its own that reads as a verdict on the
+   whole flight: a 58-image run with flame in 6 frames showed "HIGH" while 44 of
+   its frames were medium or low. These two render the rest of the picture. */
+function sevMixBar(mix, total) {
+  if (!mix || !total) return "";
+  const order = ["high", "medium", "low", "none"];
+  const seg = order.filter(k => mix[k]).map(k => {
+    const color = k === "none" ? "var(--muted-3)" : SEV[k].color;
+    const label = k === "none" ? "no detections" : SEV[k].label.toLowerCase();
+    return `<span title="${mix[k]} ${label}" style="width:${(mix[k] / total) * 100}%;
+             background:${color};"></span>`;
+  }).join("");
+  return `<span class="sev-mix" title="per-image severity across ${total} images">${seg}</span>`;
+}
+
+function sevMixText(mix, flameImages) {
+  if (!mix) return "";
+  const parts = ["high", "medium", "low"].filter(k => mix[k])
+    .map(k => `${mix[k]} ${SEV[k].label.toLowerCase()}`);
+  if (mix.none) parts.push(`${mix.none} clear`);
+  // Flame is called out by name: "6 images with flame" is actionable in a way
+  // that a severity word is not.
+  const flame = flameImages
+    ? `<b style="color:${KIND.flame.text};">flame in ${flameImages} image${flameImages === 1 ? "" : "s"}</b>`
+    : "";
+  return [flame, parts.join(" · ")].filter(Boolean).join(" &middot; ");
+}
+
 function countsLine(counts) {
   const parts = Object.entries(counts || {}).map(([k, v]) => `${v} ${esc(k)}`);
   return parts.length ? parts.join(" · ") : "no detections";
