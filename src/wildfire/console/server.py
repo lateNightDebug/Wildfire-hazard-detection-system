@@ -94,6 +94,11 @@ _EDITABLE_SETTINGS: dict = {
     "onnx_nms_iou": lambda v: max(0.05, min(0.95, float(v))),
     "report_max_image_pages": lambda v: max(1, min(500, int(v))),
     "report_detail_pages": lambda v: max(0, min(100, int(v))),
+    "cloud_enabled": bool,
+    "cloud_provider": lambda v: v if v in ("azure",) else "azure",
+    "azure_connection_string": str,
+    "azure_container": str,
+    "cloud_auto_upload": bool,
 }
 
 
@@ -167,6 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.source_cache = {}  # folder -> (signature, scan result)
     app.state.review_proc = None
     app.state.report_jobs = {}  # run_id -> report generation status
+    app.state.cloud_jobs = {}   # run_id -> cloud upload status
 
     def _scan_cached(folder: str) -> dict:
         """Scan the mission folder, reusing the result while nothing changed."""
@@ -397,10 +403,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"reports": reports}
 
     # ------------------------------------------------------- settings
+    _SECRET_MASK = "••••••••"
+
     @app.get("/api/settings")
     def api_get_settings():
         s: Settings = app.state.settings
-        return {"values": {k: getattr(s, k) for k in _EDITABLE_SETTINGS},
+        values = {k: getattr(s, k) for k in _EDITABLE_SETTINGS}
+        # as "leave unchanged" in api_set_settings below.
+        values["azure_connection_string"] = _SECRET_MASK if s.azure_connection_string else ""
+        return {"values": values,
                 "models": data.model_status(s),
                 "output_dir": str(s.output_path)}
 
@@ -409,15 +420,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         s: Settings = app.state.settings
         applied = {}
         for key, value in body.values.items():
+            if key == "azure_connection_string" and value == _SECRET_MASK:
+                continue
             caster = _EDITABLE_SETTINGS.get(key)
             if caster is None:
-                continue  # unknown/readonly keys are ignored, not an error
+                continue
             try:
                 casted = caster(value)
             except (TypeError, ValueError):
                 raise HTTPException(400, f"invalid value for {key}: {value!r}")
             setattr(s, key, casted)
-            applied[key] = casted
+            applied[key] = casted if key != "azure_connection_string" else _SECRET_MASK
         for key, enabled in body.model_enabled.items():
             for src in s.model_sources:
                 if src.key == key:
@@ -425,7 +438,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     applied[f"model:{key}"] = bool(enabled)
         if app.state.persist_settings:
             s.save()
-        # Loaded detectors baked in the old thresholds/toggles — rebuild next job.
+
+            # reset detectors
         app.state.jobs.reset_detectors()
         return {"applied": applied, "models": data.model_status(s)}
 
@@ -664,6 +678,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     note = (note + " LM Studio offline - AI analysis omitted.").strip()
                 job.update(state="done", report_url=data._rel_url(str(pdf), settings.output_path),
                            reviewed=reviewed, note=note)
+                if settings.cloud_enabled and settings.cloud_auto_upload:
+                    _start_cloud_upload(run_id, run_dir, settings)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -675,5 +691,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/scans/{run_id}/report/status")
     def api_report_status(run_id: str):
         return app.state.report_jobs.get(run_id) or {"state": "idle"}
+
+    # cloud sync
+    def _start_cloud_upload(run_id: str, run_dir: Path, settings: Settings) -> dict:
+        import threading
+
+        from .. import cloud_sync
+
+        cur = app.state.cloud_jobs.get(run_id)
+        if cur and cur.get("state") == "running":
+            return cur
+        job = {"state": "running", "done": 0, "total": 0, "current": ""}
+        app.state.cloud_jobs[run_id] = job
+
+        def work() -> None:
+            try:
+                def cb(done: int, total: int, current: str) -> None:
+                    job.update(done=done, total=total, current=current)
+
+                result = cloud_sync.upload_run(run_dir, run_id, settings, progress=cb)
+                job.update(state="done", current="", **result.to_dict())
+            except cloud_sync.CloudSyncError as e:
+                job.update(state="error", error=str(e))
+            except Exception as e:
+                job.update(state="error", error=f"{type(e).__name__}: {e}")
+
+        threading.Thread(target=work, name=f"cloud-upload-{run_id}", daemon=True).start()
+        return job
+
+    @app.post("/api/scans/{run_id}/upload")
+    def api_upload_run(run_id: str):
+        settings: Settings = app.state.settings
+        if not settings.cloud_enabled:
+            raise HTTPException(400, "Cloud sync is disabled in Settings.")
+        run_dir = settings.output_path / Path(run_id).name
+        if not (run_dir / "batch.json").exists():
+            raise HTTPException(404, f"run '{run_id}' not found")
+        job = _start_cloud_upload(run_id, run_dir, settings)
+        return JSONResponse(job, status_code=202)
+
+    @app.get("/api/scans/{run_id}/upload/status")
+    def api_upload_status(run_id: str):
+        from .. import cloud_sync
+
+        settings: Settings = app.state.settings
+        run_dir = settings.output_path / Path(run_id).name
+        job = app.state.cloud_jobs.get(run_id)
+        if job:
+            return job
+        return cloud_sync.sync_status(run_dir) or {"state": "idle"}
+
+    @app.post("/api/cloud/test")
+    def api_cloud_test():
+        from .. import cloud_sync
+
+        ok, message = cloud_sync.test_connection(app.state.settings)
+        return {"ok": ok, "message": message}
 
     return app

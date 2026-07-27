@@ -106,6 +106,11 @@ let BRANDING = {
 };
 let _navActive = null;
 
+/* NOTE: these overwrite the :root tokens at runtime, so a brand colour silently
+   wins over the value in console.css. When --green-2 was darkened there for
+   contrast, brand.json kept pushing the old lighter green back. If you tune a
+   token that appears here, tune branding/brand.json to match or the CSS change
+   has no effect. */
 function applyBrandingColors() {
   const c = BRANDING.colors || {};
   const root = document.documentElement.style;
@@ -117,8 +122,9 @@ function applyBrandingColors() {
 function renderNav(active) {
   _navActive = active;
   const tab = (id, label, href) => {
-    const cls = "nav-tab" + (active === id ? " active" : "");
-    return `<a class="${cls}" href="${href}">${label}</a>`;
+    const isActive = active === id;
+    const cls = "nav-tab" + (isActive ? " active" : "");
+    return `<a class="${cls}" href="${href}"${isActive ? ' aria-current="page"' : ""}>${label}</a>`;
   };
   const logo = BRANDING.logo_url
     ? `<img src="${esc(BRANDING.logo_url)}" alt="logo" style="height:32px; width:auto; border-radius:6px;">`
@@ -219,7 +225,7 @@ function sitePopupHtml(s, i) {
   const thumb = ((s.members || []).find(m => m.thumb) || {}).thumb;
   return `
     <div style="display:flex; gap:10px; max-width:250px;">
-      ${thumb ? `<img src="${esc(thumb)}" style="width:70px; height:70px; object-fit:cover; border-radius:6px; border:1px solid #ddd; flex-shrink:0;">` : ""}
+      ${thumb ? `<img src="${esc(thumb)}" alt="" style="width:70px; height:70px; object-fit:cover; border-radius:6px; border:1px solid #ddd; flex-shrink:0;">` : ""}
       <div style="min-width:0;">
         ${kindBadge(s.kind)} <span class="badge ${s.severity}" style="margin-left:2px;">${SEV[s.severity].label.toUpperCase()}</span>
         <div style="font-size:12px; font-weight:600; margin-top:5px;">Site ${i + 1} · ${s.count} image${s.count === 1 ? "" : "s"}</div>

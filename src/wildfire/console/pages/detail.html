@@ -36,12 +36,16 @@
       <p class="sub" id="d-sub"></p>
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:11px;" id="d-chips"></div>
     </div>
-    <div style="display:flex; gap:10px;">
-      <button id="d-edit" class="btn btn-outline">✎ Review boxes</button>
-      <button id="d-report" class="btn btn-primary">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 15h6M9 11h2"></path></svg>
-        Generate Report
-      </button>
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+      <div style="display:flex; gap:10px;">
+        <button id="d-edit" class="btn btn-outline">✎ Review boxes</button>
+        <button id="d-upload" class="btn btn-outline" style="display:none;">☁ Sync to cloud</button>
+        <button id="d-report" class="btn btn-primary">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 15h6M9 11h2"></path></svg>
+          Generate Report
+        </button>
+      </div>
+      <span class="mono" id="d-cloud-status" style="font-size:11px; color:var(--muted-3);"></span>
     </div>
   </div>
 
@@ -269,7 +273,7 @@ function drawPreview() {
     // Check only images the operator explicitly marked reviewed (not auto).
     const check = t.reviewed_by_user ? '<span class="thumb-check">&#10003;</span>' : "";
     return `<div class="thumb-wrap ${i === curImage ? "sel" : ""}" data-i="${i}" title="${esc(t.name)}">
-              <img class="thumb ${kind ? "k-" + kind : ""}" loading="lazy" src="${src}">${check}
+              <img class="thumb ${kind ? "k-" + kind : ""}" loading="lazy" src="${src}" alt="${esc(t.name)}">${check}
             </div>`;
   }).join("");
   document.querySelectorAll("#thumbs [data-i]").forEach(el =>
@@ -608,6 +612,49 @@ document.getElementById("d-report").addEventListener("click", async () => {
     btn.innerHTML = REPORT_ICON + " Generate Report";
   }
 });
+
+function paintCloudStatus(s) {
+  const el = document.getElementById("d-cloud-status");
+  if (!s || s.state === "idle" || s.synced === false) { el.textContent = "Not synced yet"; return; }
+  if (s.state === "running") { el.textContent = `Syncing… ${s.done || 0}/${s.total || "?"}`; return; }
+  if (s.state === "error") { el.textContent = "Sync failed: " + (s.error || ""); return; }
+  const when = s.synced_at || "";
+  el.textContent = when ? `Synced to cloud · ${when}` : "Synced to cloud";
+}
+
+document.getElementById("d-upload").addEventListener("click", async () => {
+  const btn = document.getElementById("d-upload");
+  btn.disabled = true; btn.textContent = "Syncing…";
+  try {
+    await api(`/api/scans/${encodeURIComponent(RUN_ID)}/upload`, { method: "POST" });
+    const done = await new Promise((resolve, reject) => {
+      const timer = setInterval(async () => {
+        let s;
+        try { s = await api(`/api/scans/${encodeURIComponent(RUN_ID)}/upload/status`); }
+        catch (e) { return; }  // transient, keep polling
+        paintCloudStatus(s);
+        if (s.state === "done") { clearInterval(timer); resolve(s); }
+        if (s.state === "error") { clearInterval(timer); reject(new Error(s.error || "failed")); }
+      }, 1000);
+    });
+    const parts = [];
+    if (done.uploaded) parts.push(`${done.uploaded} uploaded`);
+    if (done.skipped) parts.push(`${done.skipped} unchanged`);
+    if (done.failed) parts.push(`${done.failed} failed`);
+    toast(`Cloud sync complete — ${parts.join(", ") || "nothing to do"}.`, 6000);
+  } catch (e) {
+    toast("Sync failed: " + e.message, 8000);
+  } finally {
+    btn.disabled = false; btn.textContent = "☁ Sync to cloud";
+  }
+});
+
+api("/api/settings").then(s => {
+  if (s.values.cloud_enabled) {
+    document.getElementById("d-upload").style.display = "";
+    api(`/api/scans/${encodeURIComponent(RUN_ID)}/upload/status`).then(paintCloudStatus).catch(() => {});
+  }
+}).catch(() => {});
 
 api(`/api/scans/${encodeURIComponent(RUN_ID)}`)
   .then(d => { DETAIL = d; draw(); })

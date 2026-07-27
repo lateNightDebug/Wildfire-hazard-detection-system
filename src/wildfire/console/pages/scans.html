@@ -211,6 +211,7 @@ async function openPicker(sess, title) {
     grid.innerHTML = d.images.map(im => `
       <label style="cursor:pointer;">
         <img loading="lazy" src="/api/source/thumb/${encodeURIComponent(sess)}/${encodeURIComponent(im.name)}"
+             alt="${esc(im.name)}"
              style="width:100%; height:112px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4; background:#e6e4da; display:block;">
         <div class="mono" style="font-size:10px; color:var(--muted-2); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
           <input type="checkbox" data-name="${esc(im.name)}" checked style="vertical-align:middle;"> ${esc(im.name)}
@@ -264,7 +265,7 @@ function drawSessions(src) {
     <div style="border:1px solid var(--border-2); border-radius:10px; padding:10px; background:${isDone(s) ? "#f4f4ef" : "#fdfdf9"};">
       <div style="display:flex; gap:11px;">
         ${s.thumb_url
-          ? `<img src="${esc(s.thumb_url)}" style="width:78px; height:58px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4; flex-shrink:0; ${isDone(s) ? "filter:grayscale(.5); opacity:.8;" : ""}">`
+          ? `<img src="${esc(s.thumb_url)}" alt="" style="width:78px; height:58px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4; flex-shrink:0; ${isDone(s) ? "filter:grayscale(.5); opacity:.8;" : ""}">`
           : `<div style="width:78px; height:58px; border-radius:6px; background:#e6e4da; flex-shrink:0;"></div>`}
         <div style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between;">
           <div>
@@ -382,7 +383,7 @@ function setFiles(files) {
       `${pendingFiles.length} image${pendingFiles.length === 1 ? "" : "s"} ready`;
     document.getElementById("ready-size").textContent = `· ${mb.toFixed(1)} MB`;
     const thumbs = pendingFiles.slice(0, 6).map(f =>
-      `<img class="thumb-sq" src="${URL.createObjectURL(f)}" title="${esc(f.name)}">`).join("");
+      `<img class="thumb-sq" src="${URL.createObjectURL(f)}" alt="${esc(f.name)}" title="${esc(f.name)}">`).join("");
     const extra = pendingFiles.length > 6
       ? `<div class="thumb-sq" style="display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:var(--muted);">+${pendingFiles.length - 6}</div>` : "";
     document.getElementById("ready-thumbs").innerHTML = thumbs + extra;

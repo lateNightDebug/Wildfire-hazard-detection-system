@@ -10,6 +10,12 @@
   "report_max_image_pages": 30,
   "report_detail_pages": 4,
 
+  "cloud_enabled": false,
+  "cloud_provider": "azure",
+  "azure_connection_string": "",
+  "azure_container": "wildfire-runs",
+  "cloud_auto_upload": false,
+
   "conf_threshold": 0.30,
   "slice_size": 1024,
   "preprocess_max_mb": 2.0,

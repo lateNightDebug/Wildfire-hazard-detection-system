@@ -90,6 +90,13 @@ class Settings:
     source_dir: str = ""  # mission folder (SD-card dump) the console ingests
     map_tiles_dir: str = "map"  # offline map data: tiles {z}/{x}/{y}.jpg + overlays.geojson
 
+    # Cloud Sync ability, only utilizing Azure for this project
+    cloud_enabled: bool = False
+    cloud_provider: str = "azure"
+    azure_connection_string: str = ""
+    azure_container: str = "wildfire-runs"
+    cloud_auto_upload: bool = False
+
     # --- report ---
     language: str = "English"
     report_max_image_pages: int = 30  # images carrying imagery in the PDF (top hazards first)
@@ -130,7 +137,7 @@ class Settings:
     # --- models (primary dead-tree + secondary fire/smoke) ---
     model_sources: list[ModelSource] = field(default_factory=_default_model_sources)
 
-    # ------------------------------------------------------------------ paths
+    # paths
     def _resolve(self, p: str) -> Path:
         path = Path(p)
         return path if path.is_absolute() else (PROJECT_ROOT / path)

@@ -120,6 +120,19 @@ outputs/<run>_<timestamp>/
   report_<timestamp>.pdf            never overwritten
 ```
 
+### Cloud sync (optional)
+
+Everything above stays local by default — the app has no dependency on this. If you want
+an off-site backup or a shared archive, Settings → **Cloud sync** can push a run's whole
+folder (images, JSON, PDF) to an **Azure Blob Storage** container:
+
+- **Manual**: a "☁ Sync to cloud" button on each run's Scan Detail page.
+- **Automatic**: enable "Auto-upload" and a run syncs itself right after its report finishes.
+- **Incremental**: re-syncing (e.g. after a review pass) only uploads files that changed.
+- Requires `pip install azure-storage-blob` (already in `requirements.txt`) and a storage
+  account connection string, set in Settings or via the `AZURE_STORAGE_CONNECTION_STRING`
+  environment variable (preferred — keeps the secret out of `config/settings.json`).
+
 ## Detection models
 
 Detector backends are a small registry in `src/wildfire/detectors.py` — a new model is

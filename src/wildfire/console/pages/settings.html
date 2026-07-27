@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/static/console.css">
 <style>
   .form-row { display:grid; grid-template-columns: 180px 1fr; gap:12px; align-items:center; }
-  .form-row label { font-size:12px; font-weight:600; color:var(--text-2); }
+  .form-row label, .form-row .row-label { font-size:12px; font-weight:600; color:var(--text-2); }
   .form-row .hint { font-size:11px; color:var(--muted-3); margin-top:3px; }
   .input {
     font-size:12px; font-family:inherit; color:var(--text); background:#fff;
@@ -50,29 +50,29 @@
       <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
         <div style="font-size:13px; font-weight:600;">Detection</div>
         <div class="form-row">
-          <label>Confidence threshold</label>
+          <label for="conf_threshold">Confidence threshold</label>
           <input class="input" id="conf_threshold" type="number" step="0.05" min="0.01" max="0.99">
         </div>
         <div class="form-row">
-          <label>Slice size (px)</label>
+          <label for="slice_size">Slice size (px)</label>
           <div>
             <input class="input" id="slice_size" type="number" step="64" min="256" max="4096">
             <div class="hint">Tile edge for big drone frames — 1024 works well for 5280×3956</div>
           </div>
         </div>
         <div class="form-row">
-          <label>Slice overlap</label>
+          <label for="overlap_ratio">Slice overlap</label>
           <input class="input" id="overlap_ratio" type="number" step="0.05" min="0" max="0.9">
         </div>
         <div class="form-row">
-          <label>Pre-compress to (MB)</label>
+          <label for="preprocess_max_mb">Pre-compress to (MB)</label>
           <div>
             <input class="input" id="preprocess_max_mb" type="number" step="0.5" min="0" max="50">
             <div class="hint">Oversized photos are re-encoded (same resolution) before detection — faster batches. 0 = off.</div>
           </div>
         </div>
         <div class="form-row">
-          <label>Full-frame pass</label>
+          <span class="row-label">Full-frame pass</span>
           <label class="switch"><input type="checkbox" id="perform_standard_pred"> also run once un-sliced (catches large objects)</label>
         </div>
       </div>
@@ -84,11 +84,11 @@
           UI-only badge. Flame is always High, Smoke at least Medium; dead-tree density decides the rest.
         </div>
         <div class="form-row">
-          <label>High ≥ (dead trees / image)</label>
+          <label for="severity_deadtrees_high">High ≥ (dead trees / image)</label>
           <input class="input" id="severity_deadtrees_high" type="number" step="1" min="1">
         </div>
         <div class="form-row">
-          <label>Medium ≥ (dead trees / image)</label>
+          <label for="severity_deadtrees_medium">Medium ≥ (dead trees / image)</label>
           <input class="input" id="severity_deadtrees_medium" type="number" step="1" min="0.5">
         </div>
       </div>
@@ -99,33 +99,33 @@
       <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
         <div style="font-size:13px; font-weight:600;">Report · AI analysis (LM Studio)</div>
         <div class="form-row">
-          <label>Operator name</label>
+          <label for="operator_name">Operator name</label>
           <div>
             <input class="input" id="operator_name" type="text" placeholder="e.g. M. Reyes (optional)">
             <div class="hint">Who produced the run — shown on reports; blank = omitted. Not a login.</div>
           </div>
         </div>
         <div class="form-row">
-          <label>LM Studio URL</label>
+          <label for="lmstudio_url">LM Studio URL</label>
           <input class="input" id="lmstudio_url" type="text" spellcheck="false">
         </div>
         <div class="form-row">
-          <label>Model id</label>
+          <label for="lmstudio_model">Model id</label>
           <input class="input" id="lmstudio_model" type="text" spellcheck="false">
         </div>
         <div class="form-row">
-          <label>Report language</label>
+          <label for="language">Report language</label>
           <input class="input" id="language" type="text">
         </div>
         <div class="form-row">
-          <label>Images with imagery</label>
+          <label for="report_max_image_pages">Images with imagery</label>
           <div>
             <input class="input" id="report_max_image_pages" type="number" step="1" min="1" max="500">
             <div class="hint">How many images appear as pictures at all, hazard-densest first. Every image is still listed in the Image Index at the end.</div>
           </div>
         </div>
         <div class="form-row">
-          <label>Full-page images</label>
+          <label for="report_detail_pages">Full-page images</label>
           <div>
             <input class="input" id="report_detail_pages" type="number" step="1" min="0" max="100">
             <div class="hint">Of those, how many get a whole page (original + detections + density grid). The rest go on the gallery contact sheet, 8 per page.</div>
@@ -144,11 +144,11 @@
           If your trained model returns empty/garbled boxes, flip normalize to "0-1" or channel order to "BGR".
         </div>
         <div class="form-row">
-          <label>Input size fallback</label>
+          <label for="onnx_input_size">Input size fallback</label>
           <input class="input" id="onnx_input_size" type="number" step="32" min="64" max="4096">
         </div>
         <div class="form-row">
-          <label>Normalize</label>
+          <label for="onnx_normalize">Normalize</label>
           <select class="input" id="onnx_normalize">
             <option value="0-255">0-255 (Custom Vision default)</option>
             <option value="0-1">0-1</option>
@@ -156,11 +156,11 @@
           </select>
         </div>
         <div class="form-row">
-          <label>Channel order</label>
+          <label for="onnx_channel_order">Channel order</label>
           <select class="input" id="onnx_channel_order"><option>RGB</option><option>BGR</option></select>
         </div>
         <div class="form-row">
-          <label>NMS IoU</label>
+          <label for="onnx_nms_iou">NMS IoU</label>
           <input class="input" id="onnx_nms_iou" type="number" step="0.05" min="0.05" max="0.95">
         </div>
       </div>
@@ -179,15 +179,51 @@
         </div>
       </div>
 
+      <!-- CLOUD SYNC -->
+      <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-size:13px; font-weight:600;">Cloud sync (optional)</div>
+        <div style="font-size:11px; color:var(--muted-3);">
+          Push a run's processed data (originals, annotated images, grid maps, batch.json,
+          labels.json, PDF report) to Azure Blob Storage. Everything still works fully
+          offline if this is left off.
+        </div>
+        <div class="form-row">
+          <span class="row-label">Enable cloud sync</span>
+          <label class="switch"><input type="checkbox" id="cloud_enabled"> on</label>
+        </div>
+        <div class="form-row">
+          <label for="azure_connection_string">Azure connection string</label>
+          <div>
+            <input class="input" id="azure_connection_string" type="password" spellcheck="false"
+                   placeholder="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...">
+            <div class="hint">Stored in <span class="mono">config/settings.json</span>. For shared
+              machines, set the <span class="mono">AZURE_STORAGE_CONNECTION_STRING</span>
+              environment variable instead — it takes precedence.</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="azure_container">Container name</label>
+          <input class="input" id="azure_container" type="text" spellcheck="false">
+        </div>
+        <div class="form-row">
+          <span class="row-label">Auto-upload</span>
+          <label class="switch"><input type="checkbox" id="cloud_auto_upload"> sync a run automatically once its report finishes</label>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button id="cloud-test" class="btn-quiet" style="padding:7px 12px;">Test connection</button>
+          <span id="cloud-status" style="font-size:12px; color:var(--muted-2);">Runs can also be synced individually from the Scan Detail page.</span>
+        </div>
+      </div>
+
       <!-- PATHS -->
       <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
         <div style="font-size:13px; font-weight:600;">Paths</div>
         <div class="form-row">
-          <label>Mission folder</label>
+          <label for="source_dir">Mission folder</label>
           <input class="input" id="source_dir" type="text" spellcheck="false" placeholder="set from the Scans page, or paste here">
         </div>
         <div class="form-row">
-          <label>Report / output folder</label>
+          <label for="output_dir">Report / output folder</label>
           <div>
             <input class="input" id="output_dir" type="text" spellcheck="false">
             <div class="hint">Where runs and PDFs are written. Takes effect after restarting the app.</div>
@@ -206,7 +242,9 @@ const FIELDS = ["operator_name", "conf_threshold", "slice_size", "overlap_ratio"
                 "severity_deadtrees_medium", "lmstudio_url", "lmstudio_model", "language",
                 "report_max_image_pages", "report_detail_pages",
                 "onnx_input_size", "onnx_normalize", "onnx_channel_order", "onnx_nms_iou",
-                "source_dir", "output_dir"];
+                "source_dir", "output_dir",
+                "azure_connection_string", "azure_container"];
+const CHECK_FIELDS = ["perform_standard_pred", "cloud_enabled", "cloud_auto_upload"];
 let MODELS = [];
 
 function drawModels(models) {
@@ -229,7 +267,10 @@ async function load() {
     const el = document.getElementById(f);
     if (el) el.value = d.values[f] ?? "";
   }
-  document.getElementById("perform_standard_pred").checked = !!d.values.perform_standard_pred;
+  for (const f of CHECK_FIELDS) {
+    const el = document.getElementById(f);
+    if (el) el.checked = !!d.values[f];
+  }
   drawModels(d.models);
 }
 
@@ -242,7 +283,9 @@ document.getElementById("save").addEventListener("click", async () => {
       const el = document.getElementById(f);
       if (el) values[f] = el.value;
     }
-    values.perform_standard_pred = document.getElementById("perform_standard_pred").checked;
+    for (const f of CHECK_FIELDS) {
+      values[f] = document.getElementById(f).checked;
+    }
     const model_enabled = {};
     document.querySelectorAll("[data-model]").forEach(cb => model_enabled[cb.dataset.model] = cb.checked);
     const res = await api("/api/settings", {
@@ -309,6 +352,19 @@ document.getElementById("lm-test").addEventListener("click", async () => {
     st.textContent = r.up ? `Connected ✓ models: ${r.models.join(", ") || "(none loaded)"}`
                           : `Not reachable: ${r.error}`;
     st.style.color = r.up ? "var(--green-2)" : "var(--red)";
+  } catch (e) {
+    st.textContent = "Test failed: " + e.message;
+    st.style.color = "var(--red)";
+  }
+});
+
+document.getElementById("cloud-test").addEventListener("click", async () => {
+  const st = document.getElementById("cloud-status");
+  st.textContent = "Testing…"; st.style.color = "var(--muted-2)";
+  try {
+    const r = await api("/api/cloud/test", { method: "POST" });
+    st.textContent = r.message;
+    st.style.color = r.ok ? "var(--green-2)" : "var(--red)";
   } catch (e) {
     st.textContent = "Test failed: " + e.message;
     st.style.color = "var(--red)";

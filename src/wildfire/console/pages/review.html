@@ -40,7 +40,7 @@ let SCANS = [];
 
 function card(s) {
   const thumbs = (s.preview_urls || []).map(u =>
-    `<img src="${esc(u)}" style="width:96px; height:66px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4;">`).join("");
+    `<img src="${esc(u)}" alt="" style="width:96px; height:66px; object-fit:cover; border-radius:6px; border:1px solid #d2d0c4;">`).join("");
   const state = s.reviewed
     ? '<span class="badge low">REVIEWED</span>'
     : '<span class="badge medium">NEEDS REVIEW</span>';
