@@ -122,13 +122,32 @@ outputs/<run>_<timestamp>/
 
 ### Cloud sync (optional)
 
-Everything above stays local by default — the app has no dependency on this. If you want
-an off-site backup or a shared archive, Settings → **Cloud sync** can push a run's whole
-folder (images, JSON, PDF) to an **Azure Blob Storage** container:
+Everything above stays local by default — the app has no dependency on this. Settings →
+**Cloud sync** shares a run through an **Azure Blob Storage** container so other machines
+can see it.
+
+**Results only (default).** One gzipped JSON per run — detections, GPS, statistics and the
+confirmed labels. **Imagery never leaves the machine.** Measured on the real runs in this
+repo: 2,056 MB on disk against **48 KB** uploaded, roughly 12 bytes per detection, so the
+1,558-image May mission lands near 1 MB. PDFs are excluded (one was 55.8 MB on its own);
+any machine can regenerate a report from the findings it received.
+
+A run pulled down this way is flagged **results-only**: the map, counts, dashboard and
+Image Index all work, the photo viewer says the imagery stayed behind, and box review is
+hidden because there is nothing to draw on. Reports built from it skip the per-image pages
+and go cover → summary → hazard map → AI analysis → index.
+
+**Everything (opt-in).** Uploads the whole run folder — originals, annotated frames, grid
+maps and the PDF — as an off-site backup. Same 58-image flight: ~1.7 GB. Incremental, so
+re-syncing after a review pass only sends what changed.
 
 - **Manual**: a "☁ Sync to cloud" button on each run's Scan Detail page.
 - **Automatic**: enable "Auto-upload" and a run syncs itself right after its report finishes.
-- **Incremental**: re-syncing (e.g. after a review pass) only uploads files that changed.
+- **Import**: Scans page → *Cloud* card lists what is in the container; importing writes a
+  local results-only run. A run this machine already holds is never silently replaced.
+- **Ownership, not conflict resolution**: a run belongs to the machine that produced it
+  (`source.machine` in the payload). Others import it read-only. That is the right trade
+  for a single-operator tool and it is why there is no merge logic here.
 - Requires `pip install azure-storage-blob` (already in `requirements.txt`). The package is
   imported lazily, so an install without it runs normally with cloud sync switched off.
 

@@ -183,9 +183,26 @@
       <div class="card" style="padding:18px 20px; display:flex; flex-direction:column; gap:12px;">
         <div style="font-size:13px; font-weight:600;">Cloud sync (optional)</div>
         <div style="font-size:11px; color:var(--muted-3);">
-          Push a run's processed data (originals, annotated images, grid maps, batch.json,
-          labels.json, PDF report) to Azure Blob Storage. Everything still works fully
-          offline if this is left off.
+          Share a run's findings through an Azure Blob Storage container so other machines
+          can see them. Everything still works fully offline if this is left off.
+        </div>
+        <div class="form-row">
+          <label for="cloud_upload_mode">What gets uploaded</label>
+          <div>
+            <select class="input" id="cloud_upload_mode">
+              <option value="results">Results only — detections, GPS, confirmed labels</option>
+              <option value="full">Everything — imagery and PDF as well</option>
+            </select>
+            <div class="hint">
+              <b>Results only</b> sends one small JSON file per run: about 40 KB for a
+              58-image flight, roughly 1 MB for a 1,500-image mission. Photos never leave
+              this machine, so another machine sees the map, the counts and the confirmed
+              boxes but not the imagery.<br>
+              <b>Everything</b> also uploads originals, annotated frames, grid maps and the
+              PDF &mdash; the same 58-image flight is about 1.7 GB. Only worth it as an
+              off-site backup of the whole run.
+            </div>
+          </div>
         </div>
         <div class="form-row">
           <span class="row-label">Enable cloud sync</span>
@@ -254,7 +271,7 @@ renderNav("settings");
 const FIELDS = ["operator_name", "conf_threshold", "slice_size", "overlap_ratio",
                 "preprocess_max_mb", "severity_deadtrees_high",
                 "severity_deadtrees_medium", "lmstudio_url", "lmstudio_model", "language",
-                "report_max_image_pages", "report_detail_pages",
+                "report_max_image_pages", "report_detail_pages", "cloud_upload_mode",
                 "onnx_input_size", "onnx_normalize", "onnx_channel_order", "onnx_nms_iou",
                 "source_dir", "output_dir",
                 "azure_connection_string", "azure_container"];

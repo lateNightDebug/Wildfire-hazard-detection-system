@@ -127,6 +127,24 @@ config/settings.json    all settings (editable in the Settings page)
 | **Check the AI report writer** | Settings → *Test connection* (LM Studio). |
 | **Share results between machines** | Settings → Cloud sync. Paste the SAS URL the admin generated, *Test connection*, switch on. There is **no login** — the token is the access. See below. |
 
+### What actually gets shared
+
+By default the cloud carries **findings, not photos**: one small JSON per run with the
+detections, GPS, statistics and confirmed labels. On the real runs in this repo that is
+2,056 MB on disk versus **48 KB** uploaded. The imagery — and the PDF, which alone was
+55.8 MB for one run — stays on the machine that flew the mission.
+
+So a colleague who imports your run sees the map, the counts, the dashboard totals and
+your confirmed boxes, but not the photos. The Scan Detail page says so plainly and hides
+box review, because there is no image to draw on. That is deliberate: the useful part
+travels, the bulk and the privacy-sensitive part does not.
+
+Settings → *What gets uploaded* can be switched to **Everything** if you want a full
+off-site backup of a run (imagery and PDF included, ~1.7 GB for 58 images).
+
+**Who owns a run:** the machine that produced it. Others import it read-only. There is no
+merge logic and none is needed — one operator flies one mission.
+
 ### Setting up cloud sync (optional, off by default)
 
 There is no account system and none is needed: Azure Storage is the identity layer, and

@@ -250,3 +250,194 @@ def test_test_connection_warns_when_an_account_key_is_used(tmp_path, monkeypatch
     ok, message = cloud_sync.test_connection(sas)
     assert ok is True
     assert "sas" in message.lower() and "account key" not in message.lower()
+
+
+# ------------------------------------------------------------- results sync
+# Results mode uploads findings, not imagery: measured on real runs that is
+# 2,056 MB against 48 KB. These pin the round trip and the two properties that
+# make it safe - no local paths escape, and an import never clobbers a run this
+# machine produced.
+
+def _make_full_run(tmp_path):
+    """A run with imagery, labels and a report, i.e. what results mode must strip."""
+    run_dir = tmp_path / "console_20260101_000000"
+    (run_dir / "originals").mkdir(parents=True)
+    (run_dir / "annotated").mkdir()
+    img = "D:\\Sait\\outputs\\console_20260101_000000\\originals\\DJI_0001.JPG"
+    (run_dir / "batch.json").write_text(json.dumps({
+        "batch_info": {"device": "FIELD-LAPTOP-1", "operator": "M. Reyes",
+                       "generated_at": "2026-01-01T00:00:00",
+                       "output_dir": "D:\\Sait\\outputs"},
+        "stats": {"images_processed": 1, "total_detections": 2},
+        "images": [{
+            "path": img, "name": "DJI_0001.JPG", "width": 5280, "height": 3956,
+            "gps": [51.1134, -115.3835], "altitude": 1387.2,
+            "timestamp": "2025:05:02 13:48:22", "camera": "DJI FC3582", "flagged": True,
+            "orig_display_path": img,
+            "annotated_path": "D:\\Sait\\outputs\\...\\annotated\\DJI_0001.JPG",
+            "density_path": "D:\\Sait\\outputs\\...\\gridmaps\\DJI_0001.JPG",
+            "detections": [
+                {"cls_name": "dead", "display": "Dead Tree", "score": 0.93,
+                 "xyxy": [10, 20, 60, 90]},
+                {"cls_name": "fire", "display": "Flame", "score": 0.71,
+                 "xyxy": [200, 210, 260, 280]},
+            ],
+        }],
+    }), encoding="utf-8")
+    (run_dir / "labels.json").write_text(json.dumps({
+        "labels": [{"image": img, "xyxy": [10, 20, 60, 90], "class": "Dead Tree"}]
+    }), encoding="utf-8")
+    (run_dir / "reviewed_images.json").write_text(
+        json.dumps({"reviewed": ["DJI_0001.JPG"]}), encoding="utf-8")
+    (run_dir / "originals" / "DJI_0001.JPG").write_bytes(b"x" * 4096)
+    (run_dir / "report_20260101_000000.pdf").write_bytes(b"%PDF-1.4 fake")
+    return run_dir
+
+
+def test_results_payload_carries_findings_and_no_local_paths(tmp_path):
+    run_dir = _make_full_run(tmp_path)
+    payload = cloud_sync.results_payload(run_dir, run_dir.name)
+
+    blob = json.dumps(payload)
+    assert "D:\\\\Sait" not in blob and "D:\\Sait" not in blob, "a local path escaped"
+    assert "originals" not in blob and ".pdf" not in blob.lower()
+
+    assert payload["results_only"] is True
+    # `machine` identifies the owner; `device` is the GPU and two laptops can
+    # share one, so it must not be what ownership keys on.
+    assert payload["source"]["machine"]
+    assert payload["source"]["device"] == "FIELD-LAPTOP-1"
+    im = payload["images"][0]
+    assert im["name"] == "DJI_0001.JPG" and im["path"] == "DJI_0001.JPG"
+    assert im["gps"] == [51.1134, -115.3835] and im["altitude"] == 1387.2
+    assert len(im["detections"]) == 2
+    # labels travel keyed by image NAME so they match again after the trip
+    assert payload["labels"][0]["image"] == "DJI_0001.JPG"
+    assert payload["reviewed_images"] == ["DJI_0001.JPG"]
+
+
+def test_results_payload_is_tiny_next_to_the_run(tmp_path):
+    """The whole point: findings are orders of magnitude smaller than imagery."""
+    import gzip
+
+    run_dir = _make_full_run(tmp_path)
+    on_disk = sum(f.stat().st_size for f in run_dir.rglob("*") if f.is_file())
+    packed = gzip.compress(
+        json.dumps(cloud_sync.results_payload(run_dir, run_dir.name)).encode("utf-8"), 9)
+    assert len(packed) < on_disk / 5
+    assert len(packed) < 2000  # one image, two detections
+
+
+def test_upload_results_sends_one_blob_and_marks_the_run(tmp_path, monkeypatch):
+    run_dir = _make_full_run(tmp_path)
+    settings = _settings(tmp_path)
+    fake = FakeContainer()
+    monkeypatch.setattr(cloud_sync, "_require_azure", lambda: (None, FakeContentSettings))
+    monkeypatch.setattr(cloud_sync, "_container_client", lambda s: fake)
+
+    result = cloud_sync.upload_results(run_dir, run_dir.name, settings)
+    assert fake.uploads == [f"{run_dir.name}/results.json.gz"]
+    assert result.uploaded == 1 and result.failed == 0
+    marker = json.loads((run_dir / cloud_sync.MARKER_NAME).read_text(encoding="utf-8"))
+    assert marker["mode"] == "results" and marker["synced_at"]
+
+
+def test_results_round_trip_rebuilds_a_readable_run(tmp_path, monkeypatch):
+    """Export, import into a different output root, and read it back with the
+    same loaders the console uses - otherwise the far side sees nothing."""
+    import gzip
+
+    from src.wildfire.console import data as cdata
+    from src.wildfire.types import BatchResult
+
+    run_dir = _make_full_run(tmp_path)
+    packed = gzip.compress(
+        json.dumps(cloud_sync.results_payload(run_dir, run_dir.name)).encode("utf-8"), 9)
+
+    class OneBlob:
+        container_name = "wildfire-runs"
+
+        def download_blob(self, name):
+            assert name == f"{run_dir.name}/results.json.gz"
+            return type("D", (), {"readall": lambda self: packed})()
+
+    other_root = tmp_path / "other-machine"
+    other_root.mkdir()
+    remote_settings = _settings(tmp_path, output_dir=str(other_root))
+    monkeypatch.setattr(cloud_sync, "_container_client", lambda s: OneBlob())
+
+    dest = cloud_sync.import_results(run_dir.name, remote_settings)
+    assert dest == other_root / run_dir.name
+
+    # parses with the real loader
+    batch = BatchResult.from_dict(
+        json.loads((dest / "batch.json").read_text(encoding="utf-8")))
+    assert len(batch.images) == 1
+    assert batch.images[0].gps == (51.1134, -115.3835)
+    assert [d.display for d in batch.images[0].detections] == ["Dead Tree", "Flame"]
+
+    # and the console's own detail view reports it as results-only
+    detail = cdata.scan_detail(run_dir.name, remote_settings)
+    assert detail["results_only"] is True
+    assert detail["synced_from"]["machine"]
+    assert detail["synced_from"]["device"] == "FIELD-LAPTOP-1"
+    got = detail["images_detail"][0]
+    assert got["original_url"] is None and got["annotated_url"] is None
+    assert got["confirmed"], "confirmed labels should survive the re-keying"
+    assert got["reviewed_by_user"] is True
+
+
+def test_import_refuses_to_overwrite_a_local_run(tmp_path, monkeypatch):
+    """An import has no imagery; silently replacing a local run would delete the
+    photos and keep only the numbers."""
+    import gzip
+
+    run_dir = _make_full_run(tmp_path)
+    packed = gzip.compress(
+        json.dumps(cloud_sync.results_payload(run_dir, run_dir.name)).encode("utf-8"), 9)
+
+    class OneBlob:
+        container_name = "wildfire-runs"
+
+        def download_blob(self, name):
+            return type("D", (), {"readall": lambda self: packed})()
+
+    settings = _settings(tmp_path)  # output_dir already holds this run
+    monkeypatch.setattr(cloud_sync, "_container_client", lambda s: OneBlob())
+
+    with pytest.raises(cloud_sync.CloudSyncError, match="already exists"):
+        cloud_sync.import_results(run_dir.name, settings)
+    assert (run_dir / "originals" / "DJI_0001.JPG").exists()  # untouched
+
+    cloud_sync.import_results(run_dir.name, settings, overwrite=True)  # explicit is fine
+
+
+def test_import_rejects_a_traversing_run_id(tmp_path):
+    settings = _settings(tmp_path)
+    for bad in ("../escape", "a/b", "..\\escape"):
+        with pytest.raises(cloud_sync.CloudSyncError):
+            cloud_sync.import_results(bad, settings)
+
+
+def test_list_remote_runs_skips_non_results_blobs(tmp_path, monkeypatch):
+    from datetime import datetime as _dt
+
+    class Blob:
+        def __init__(self, name, size, when):
+            self.name, self.size, self.last_modified = name, size, when
+
+    class Listing:
+        container_name = "wildfire-runs"
+
+        def list_blobs(self):
+            return [
+                Blob("run_a/results.json.gz", 4096, _dt(2026, 1, 2)),
+                Blob("run_b/results.json.gz", 2048, _dt(2026, 1, 3)),
+                Blob("run_c/originals/DJI_0001.JPG", 9_000_000, _dt(2026, 1, 1)),
+                Blob("run_c/batch.json", 1024, _dt(2026, 1, 1)),
+            ]
+
+    monkeypatch.setattr(cloud_sync, "_container_client", lambda s: Listing())
+    runs = cloud_sync.list_remote_runs(_settings(tmp_path))
+    assert [r["run_id"] for r in runs] == ["run_b", "run_a"]  # newest first
+    assert runs[1]["size"] == 4096

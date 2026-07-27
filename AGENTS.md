@@ -181,6 +181,16 @@ outputs/<run>_<timestamp>/
   layout makes it 15 and covers all 58 instead of 30.
 - **LLM input is bounded**: aggregate stats + top-15 hotspots, independent of
   flight size. Do not feed per-image data for every image.
+- **Cloud sync carries results, not imagery.** `cloud_upload_mode` defaults to
+  `"results"`: one gzipped JSON per run with detections, GPS, stats and
+  confirmed labels. Measured on the real runs, 2,056 MB on disk becomes 48 KB
+  uploaded (~12 bytes per detection). Photos and PDFs stay local -- that is a
+  privacy property, not only a size win. `results_payload()` strips every local
+  absolute path; do not put one back. Imported runs are marked
+  `results_only` and the UI must keep hiding image-dependent actions rather
+  than letting them fail. Ownership replaces conflict resolution: a run belongs
+  to `source.machine`, others hold it read-only, and `import_results()` refuses
+  to overwrite a local run without an explicit flag.
 - **The frontend is deliberately a plain multi-page app with no build step.**
   One HTML file per page, one shared `console.js`, no framework, no bundler, no
   npm. This is a choice, not a gap:

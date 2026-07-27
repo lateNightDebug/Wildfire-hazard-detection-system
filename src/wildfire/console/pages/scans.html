@@ -140,6 +140,20 @@
     </div>
     <div id="rows"></div>
   </div>
+
+  <!-- CLOUD: runs other machines uploaded. Hidden unless cloud sync is on.
+       Listing is a network call, so it only happens when asked. -->
+  <div class="card" id="cloud-card" style="margin-top:16px; display:none;">
+    <div class="card-head">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="card-title">Cloud</span>
+        <span class="mono" style="font-size:11px; color:var(--muted-3);" id="cloud-note">
+          results shared by other machines &mdash; findings and GPS, no imagery</span>
+      </div>
+      <button id="cloud-refresh" class="btn-quiet" style="padding:5px 10px; font-size:11px;">Refresh</button>
+    </div>
+    <div id="cloud-rows"></div>
+  </div>
 </div>
 
 <script src="/static/console.js"></script>
@@ -148,6 +162,64 @@ renderNav("scans");
 let SCANS = [];
 let pendingFiles = [];
 let pollTimer = null;
+
+/* -------------------------------------------------------------- cloud card
+   Runs uploaded by other machines. Importing brings down the findings only -
+   detections, GPS and confirmed labels - so the imagery stays where it was
+   flown. A run this machine already holds is never silently replaced. */
+function cloudRow(r) {
+  const kb = r.size ? (r.size / 1024).toFixed(1) + " KB" : "";
+  const when = r.last_modified ? r.last_modified.replace("T", " ") : "";
+  const action = r.local
+    ? `<a class="link-green" href="/scans/${encodeURIComponent(r.run_id)}" style="font-size:11px;">open${r.imported ? "" : " (local)"} &rarr;</a>`
+    : `<button class="btn-quiet" data-import="${esc(r.run_id)}" style="padding:5px 11px; font-size:11px;">Import results</button>`;
+  return `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;
+                padding:11px 18px; border-bottom:1px solid var(--line-soft);">
+      <div style="display:flex; flex-direction:column; line-height:1.35; min-width:0;">
+        <span class="mono" style="font-size:12px; font-weight:600;">${esc(r.run_id)}</span>
+        <span class="mono" style="font-size:11px; color:var(--muted-2);">${esc(when)}${kb ? " &middot; " + kb : ""}</span>
+      </div>
+      ${action}
+    </div>`;
+}
+
+async function loadCloud() {
+  const rows = document.getElementById("cloud-rows");
+  rows.innerHTML = '<div class="empty">Loading…</div>';
+  let runs;
+  try {
+    runs = (await api("/api/cloud/runs")).runs;
+  } catch (e) {
+    rows.innerHTML = `<div class="empty">Could not reach the container: ${esc(e.message)}</div>`;
+    return;
+  }
+  rows.innerHTML = runs.length
+    ? runs.map(cloudRow).join("")
+    : '<div class="empty">Nothing in the container yet.</div>';
+  rows.querySelectorAll("[data-import]").forEach(btn =>
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.import;
+      btn.disabled = true; btn.textContent = "Importing…";
+      try {
+        await api(`/api/cloud/runs/${encodeURIComponent(id)}/import`, { method: "POST" });
+        toast(`Imported ${id}`);
+        await Promise.all([loadCloud(), loadScans()]);
+      } catch (e) {
+        toast("Import failed: " + e.message);
+        btn.disabled = false; btn.textContent = "Import results";
+      }
+    }));
+}
+
+async function initCloud() {
+  // Only show the card when sync is configured; otherwise it is noise.
+  const s = await api("/api/settings").catch(() => null);
+  if (!s || !s.values.cloud_enabled) return;
+  document.getElementById("cloud-card").style.display = "";
+  document.getElementById("cloud-refresh").addEventListener("click", loadCloud);
+  loadCloud();
+}
 
 /* ------------------------------------------------------------- models card */
 async function loadModels() {
@@ -478,6 +550,7 @@ document.getElementById("f-status").addEventListener("change", drawTable);
 loadModels().catch(e => toast("Model status failed: " + e.message));
 loadScans().catch(e => toast("Failed to load scans: " + e.message));
 loadSource().catch(e => toast("Mission folder failed: " + e.message));
+initCloud().catch(() => {});  // no cloud configured is the normal case, not an error
 </script>
 </body>
 </html>

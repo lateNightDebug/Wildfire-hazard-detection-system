@@ -253,6 +253,37 @@ Repo rule: commits carry no AI signature lines.
 - [x] Suite **90 -> 102** tests. Verified the app still starts and serves all 44
       routes with `azure-storage-blob` absent, so offline installs are unaffected
 
+## Batch 18 - results-only cloud sync (2026-07-26)
+
+- [x] **Cloud sync now shares findings, not imagery.** `cloud_upload_mode`
+      defaults to `"results"`: one gzipped JSON per run holding detections, GPS,
+      statistics and confirmed labels. Measured across the five real runs,
+      **2,056 MB on disk becomes 48 KB uploaded** - about 12 bytes per detection,
+      so the 1,558-image May mission is roughly 1 MB. PDFs are excluded (55.8 MB
+      for one run on its own). Full-folder upload is kept as an opt-in backup mode
+- [x] **Round trip verified on real data**: exported all five runs, imported them
+      into a separate output root as a second machine, and the map came back
+      identical - 67 flagged images to 14 sites on both sides, dashboard totals
+      matching, zero broken image URLs
+- [x] **No local paths leave the machine**: `results_payload()` strips absolute
+      paths and sends each image's file name only, so `_rel_url()` returns None
+      and the UI's existing "no image" path takes over
+- [x] **Imported runs are marked results-only**: the Scan Detail page names the
+      machine it came from, explains that the photos stayed there, replaces the
+      thumbnail strip with labelled chips (no 404 image icons), and hides review,
+      re-upload and mark-reviewed, which all need a frame
+- [x] **Reports adapt**: `has_imagery()` drops the per-image pages and gallery when
+      a run has no frames, so an imported run produces a 7-page report (cover,
+      summary, hazard map, AI analysis, full index) instead of 15 with 8 pages of
+      placeholder dashes. Also covers runs whose folders were deleted to free disk
+- [x] **Ownership instead of conflict resolution**: `source.machine` is the host
+      name, not the compute device - `batch_info["device"]` is the GPU and two
+      laptops can share one. Imports are read-only and never overwrite a local run
+      without an explicit flag
+- [x] Scans page gained a **Cloud** card listing container contents with one-click
+      import; hidden entirely when cloud sync is off
+- [x] Suite **102 -> 111** tests
+
 ## Waiting on external conditions
 
 - [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it

@@ -34,6 +34,49 @@ def test_build_summary_text_mentions_key_facts():
     assert "2025:05:02" in txt  # capture time from EXIF, not just processing date
 
 
+def test_report_skips_imagery_sections_when_there_are_no_frames(tmp_path):
+    """A run synced as results-only (or one whose folders were deleted to free
+    disk) has nothing to draw. Detail pages and the gallery must be dropped
+    rather than emitted as pages of placeholder dashes."""
+    from pypdf import PdfReader
+
+    from src.wildfire.report import has_imagery
+
+    batch = _sample_batch()
+    assert has_imagery(batch.images) is False  # paths point nowhere
+
+    out = build_report(batch, tmp_path / "no_imagery.pdf", ai_text="Analysis.")
+    pages = PdfReader(str(out)).pages
+    text = "\n".join(p.extract_text() or "" for p in pages)
+
+    assert "Image Index" in text          # every image is still accounted for
+    assert "DJI_x.JPG" in text
+    assert "Batch Summary" in text
+    assert "Hazard Image Gallery" not in text
+    assert "Image: DJI_x.JPG" not in text  # no per-image detail page
+    assert "No imagery is stored for this run" in text
+
+
+def test_report_keeps_imagery_sections_when_frames_exist(tmp_path):
+    """The counterpart: a run WITH frames must still get its detail pages."""
+    from PIL import Image as PILImage
+    from pypdf import PdfReader
+
+    from src.wildfire.report import has_imagery
+
+    frame = tmp_path / "DJI_x.JPG"
+    PILImage.new("RGB", (240, 180), (40, 90, 40)).save(frame)
+    batch = _sample_batch()
+    batch.images[0].annotated_path = str(frame)
+    batch.images[0].orig_display_path = str(frame)
+    assert has_imagery(batch.images) is True
+
+    out = build_report(batch, tmp_path / "with_imagery.pdf", ai_text="Analysis.")
+    text = "\n".join(p.extract_text() or "" for p in PdfReader(str(out)).pages)
+    assert "Image: DJI_x.JPG" in text
+    assert "No imagery is stored for this run" not in text
+
+
 def test_display_copy_same_stem_different_dirs_no_collision(tmp_path):
     from PIL import Image as PILImage
 

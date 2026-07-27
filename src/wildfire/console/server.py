@@ -99,6 +99,7 @@ _EDITABLE_SETTINGS: dict = {
     "azure_connection_string": str,
     "azure_container": str,
     "cloud_auto_upload": bool,
+    "cloud_upload_mode": lambda v: v if v in ("results", "full") else "results",
 }
 
 
@@ -709,7 +710,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 def cb(done: int, total: int, current: str) -> None:
                     job.update(done=done, total=total, current=current)
 
-                result = cloud_sync.upload_run(run_dir, run_id, settings, progress=cb)
+                # Results mode sends one small JSON blob (findings, no imagery);
+                # full mode sends the whole run folder. See Settings -> Cloud sync.
+                send = (cloud_sync.upload_results
+                        if getattr(settings, "cloud_upload_mode", "results") != "full"
+                        else cloud_sync.upload_run)
+                result = send(run_dir, run_id, settings, progress=cb)
                 job.update(state="done", current="", **result.to_dict())
             except cloud_sync.CloudSyncError as e:
                 job.update(state="error", error=str(e))
@@ -747,5 +753,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         ok, message = cloud_sync.test_connection(app.state.settings)
         return {"ok": ok, "message": message}
+
+    @app.get("/api/cloud/runs")
+    def api_cloud_runs():
+        """Runs sitting in the container, flagged with whether we already hold them.
+
+        Listing is a network round-trip, so it runs on request rather than on a
+        timer - the console must stay usable with no connectivity at all.
+        """
+        from .. import cloud_sync
+
+        settings: Settings = app.state.settings
+        if not settings.cloud_enabled:
+            raise HTTPException(400, "Cloud sync is disabled in Settings.")
+        try:
+            remote = cloud_sync.list_remote_runs(settings)
+        except cloud_sync.CloudSyncError as e:
+            raise HTTPException(502, str(e))
+        for r in remote:
+            local = settings.output_path / r["run_id"]
+            r["local"] = (local / "batch.json").exists()
+            r["imported"] = bool(cloud_sync.import_status(local)) if local.exists() else False
+        return {"runs": remote}
+
+    @app.post("/api/cloud/runs/{run_id}/import")
+    def api_cloud_import(run_id: str, overwrite: bool = False):
+        """Pull one run's findings down as a local results-only run."""
+        from .. import cloud_sync
+
+        settings: Settings = app.state.settings
+        if not settings.cloud_enabled:
+            raise HTTPException(400, "Cloud sync is disabled in Settings.")
+        try:
+            dest = cloud_sync.import_results(run_id, settings, overwrite=overwrite)
+        except cloud_sync.CloudSyncError as e:
+            raise HTTPException(409, str(e))
+        return {"run_id": dest.name, "imported": True}
 
     return app

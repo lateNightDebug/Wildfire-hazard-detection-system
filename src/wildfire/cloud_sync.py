@@ -1,6 +1,8 @@
 from __future__ import annotations
 # imports
 
+import gzip
+import io
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -10,6 +12,15 @@ from typing import Callable, Optional
 from .config import Settings
 
 MARKER_NAME = ".cloud_sync.json"
+
+# Results-only sync: one small blob per run instead of the whole folder.
+# Measured on real runs, the five in outputs/ are 2,056 MB of imagery and PDFs
+# against 48 KB of gzipped results -- about 12 bytes per detection, so even the
+# 1,558-image May mission lands near 1 MB. Imagery never leaves the machine,
+# which is a privacy property worth keeping, not just a size win.
+RESULTS_BLOB = "results.json.gz"
+RESULTS_SCHEMA = 1
+IMPORT_MARKER = ".cloud_import.json"
 
 # Internal/working files that should never be uploaded — bookkeeping
 # artifacts, not "processed data."
@@ -283,3 +294,207 @@ def _content_type(path: Path) -> Optional[str]:
         ".jpeg": "image/jpeg",
         ".png": "image/png",
     }.get(path.suffix.lower())
+
+
+# ------------------------------------------------------------ results sync
+def _machine_name() -> str:
+    """Host name, used to say which machine owns a run."""
+    import socket
+
+    try:
+        return socket.gethostname() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def results_payload(run_dir: Path, run_id: str) -> dict:
+    """Serialize a run's findings - no imagery, no PDF, no local paths.
+
+    Local absolute paths are stripped on purpose: `D:\\Sait\\...` means nothing on
+    another machine, and `_rel_url()` turns anything outside the output root into
+    None anyway, which is exactly the "no image available" the UI already draws.
+    Each image keeps `path` set to its own file name so ImageResult.from_dict()
+    still parses, and labels are re-keyed from path to name so they survive the
+    trip and match again on the far side.
+    """
+    batch = json.loads((run_dir / "batch.json").read_text(encoding="utf-8"))
+    by_name = {str(im.get("path")): im.get("name") for im in batch.get("images") or []}
+
+    labels = _load_json(run_dir / "labels.json") or {}
+    records = []
+    for rec in labels.get("labels", []):
+        if not isinstance(rec, dict):
+            continue
+        rec = dict(rec)
+        rec["image"] = by_name.get(str(rec.get("image")), rec.get("image"))
+        records.append(rec)
+
+    reviewed = (_load_json(run_dir / "reviewed_images.json") or {}).get("reviewed", [])
+
+    info = dict(batch.get("batch_info") or {})
+    info.pop("output_dir", None)  # a path on the machine that produced the run
+    info["results_only"] = True
+
+    images = []
+    for im in batch.get("images") or []:
+        images.append({
+            "path": im.get("name"),  # name only: no filesystem layout leaves the machine
+            "name": im.get("name"),
+            "width": im.get("width", 0), "height": im.get("height", 0),
+            "gps": im.get("gps"), "altitude": im.get("altitude"),
+            "timestamp": im.get("timestamp"), "camera": im.get("camera"),
+            "flagged": im.get("flagged", False),
+            "detections": im.get("detections") or [],
+            "error": im.get("error"),
+        })
+
+    return {
+        "schema": RESULTS_SCHEMA,
+        "run_id": run_id,
+        "results_only": True,
+        # Ownership: a run belongs to the machine that produced it. Everyone else
+        # imports it read-only, which is why there is no conflict resolution here.
+        # `machine` is the host name -- batch_info's "device" is the COMPUTE
+        # device (e.g. "cuda:0 (RTX 4090)"), which two laptops can share and so
+        # cannot identify an owner.
+        "source": {"machine": _machine_name(), "device": info.get("device"),
+                   "operator": info.get("operator"),
+                   "generated_at": info.get("generated_at")},
+        "uploaded_at": datetime.now().isoformat(timespec="seconds"),
+        "stats": batch.get("stats") or {},
+        "batch_info": info,
+        "images": images,
+        "labels": records,
+        "reviewed_images": reviewed,
+    }
+
+
+def upload_results(run_dir: Path, run_id: str, settings: Settings,
+                   progress: ProgressFn = None) -> SyncResult:
+    """Upload one run's findings as a single gzipped blob."""
+    if not settings.cloud_enabled:
+        raise CloudSyncError("Cloud sync is disabled in Settings.")
+    _, ContentSettings = _require_azure()
+    container = _container_client(settings)
+    container_name = settings.azure_container or "wildfire-runs"
+    result = SyncResult(run_id=run_id, container=container_name)
+
+    if progress:
+        progress(0, 1, RESULTS_BLOB)
+    body = gzip.compress(
+        json.dumps(results_payload(run_dir, run_id), separators=(",", ":")).encode("utf-8"), 9)
+    blob_name = f"{run_id}/{RESULTS_BLOB}"
+    try:
+        # BytesIO rather than raw bytes, so this streams the same way upload_run
+        # does and both paths look identical to the container client.
+        container.upload_blob(
+            name=blob_name, data=io.BytesIO(body), overwrite=True,
+            content_settings=ContentSettings(content_type="application/gzip"),
+        )
+        result.uploaded = 1
+        result.bytes_uploaded = len(body)
+    except Exception as e:
+        result.failed = 1
+        result.errors.append(f"{RESULTS_BLOB}: {type(e).__name__}: {e}")
+    if progress:
+        progress(1, 1, RESULTS_BLOB)
+
+    marker = _load_marker(run_dir)
+    marker["container"] = container_name
+    marker["mode"] = "results"
+    if not result.failed:
+        marker["synced_at"] = result.synced_at
+        marker["results_bytes"] = len(body)
+    _save_marker(run_dir, marker)
+    return result
+
+
+def list_remote_runs(settings: Settings) -> list[dict]:
+    """Runs available in the container, newest first.
+
+    Only results blobs are listed. A container may also hold whole-folder
+    uploads from the legacy mode; those are not importable as results and are
+    skipped rather than half-shown.
+    """
+    container = _container_client(settings)
+    suffix = "/" + RESULTS_BLOB
+    runs = []
+    try:
+        for blob in container.list_blobs():
+            name = getattr(blob, "name", "") or ""
+            if not name.endswith(suffix):
+                continue
+            modified = getattr(blob, "last_modified", None)
+            runs.append({
+                "run_id": name[: -len(suffix)],
+                "size": int(getattr(blob, "size", 0) or 0),
+                "last_modified": modified.isoformat(timespec="seconds") if modified else None,
+            })
+    except Exception as e:
+        raise CloudSyncError(f"Could not list the container: {type(e).__name__}: {e}") from e
+    runs.sort(key=lambda r: r["last_modified"] or "", reverse=True)
+    return runs
+
+
+def import_results(run_id: str, settings: Settings, overwrite: bool = False) -> Path:
+    """Pull a run's findings down and write them as a local results-only run.
+
+    Refuses to clobber an existing local folder unless explicitly told to: an
+    imported run carries no imagery, so silently overwriting a run this machine
+    produced would destroy the photos and keep only the numbers.
+    """
+    safe_id = Path(run_id).name
+    if not safe_id or safe_id != run_id:
+        raise CloudSyncError(f"Invalid run id: {run_id!r}")
+    dest = settings.output_path / safe_id
+    if dest.exists() and not overwrite:
+        raise CloudSyncError(
+            f"'{safe_id}' already exists locally. Importing would replace it with a "
+            f"results-only copy that has no imagery. Delete or rename it first if "
+            f"that is really what you want."
+        )
+
+    container = _container_client(settings)
+    try:
+        raw = container.download_blob(f"{safe_id}/{RESULTS_BLOB}").readall()
+    except Exception as e:
+        raise CloudSyncError(f"Could not download '{safe_id}': {type(e).__name__}: {e}") from e
+    try:
+        payload = json.loads(gzip.decompress(raw).decode("utf-8"))
+    except Exception as e:
+        raise CloudSyncError(f"'{safe_id}' is not a readable results blob: {e}") from e
+    if payload.get("schema") != RESULTS_SCHEMA:
+        raise CloudSyncError(
+            f"'{safe_id}' uses results schema {payload.get('schema')}, this build reads "
+            f"{RESULTS_SCHEMA}. Update the app.")
+
+    dest.mkdir(parents=True, exist_ok=True)
+    batch = {"batch_info": payload.get("batch_info") or {},
+             "stats": payload.get("stats") or {},
+             "images": payload.get("images") or []}
+    (dest / "batch.json").write_text(json.dumps(batch, indent=2), encoding="utf-8")
+    if payload.get("labels"):
+        (dest / "labels.json").write_text(
+            json.dumps({"labels": payload["labels"]}, indent=2), encoding="utf-8")
+    if payload.get("reviewed_images"):
+        (dest / "reviewed_images.json").write_text(
+            json.dumps({"reviewed": payload["reviewed_images"]}, indent=2), encoding="utf-8")
+    (dest / IMPORT_MARKER).write_text(json.dumps({
+        "run_id": safe_id, "source": payload.get("source") or {},
+        "uploaded_at": payload.get("uploaded_at"),
+        "imported_at": datetime.now().isoformat(timespec="seconds"),
+        "results_only": True,
+    }, indent=2), encoding="utf-8")
+    return dest
+
+
+def import_status(run_dir: Path) -> Optional[dict]:
+    """Import marker for a run, or None when this machine produced it itself."""
+    return _load_json(run_dir / IMPORT_MARKER)
+
+
+def _load_json(path: Path) -> Optional[dict]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None

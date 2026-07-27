@@ -93,9 +93,13 @@ class Settings:
     # Cloud Sync ability, only utilizing Azure for this project
     cloud_enabled: bool = False
     cloud_provider: str = "azure"
-    azure_connection_string: str = ""
+    azure_connection_string: str = ""  # SAS URL preferred over an account key
     azure_container: str = "wildfire-runs"
     cloud_auto_upload: bool = False
+    # "results" uploads one small JSON blob per run (findings only, no imagery);
+    # "full" uploads the entire run folder. Results is the default because the
+    # two differ by ~40,000x on real data and imagery never needs to leave.
+    cloud_upload_mode: str = "results"
 
     # --- report ---
     language: str = "English"

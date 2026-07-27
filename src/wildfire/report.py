@@ -672,6 +672,22 @@ def _summary_page(batch: BatchResult, ai_text: Optional[str], assets: Path,
     return story
 
 
+def has_imagery(images: list[ImageResult]) -> bool:
+    """Is there a single renderable frame in this run?
+
+    Two ways there is not: the run was imported from the cloud as results only
+    (findings synced, photos stayed on the machine that flew it), or the folders
+    were deleted to reclaim disk, which the manual actively suggests. Either way
+    the detail pages and the gallery would be pages of placeholder dashes, so
+    they are skipped and the report goes cover -> summary -> map -> AI -> index.
+    """
+    for im in images:
+        for p in (im.annotated_path, im.orig_display_path, im.density_path):
+            if p and Path(p).exists():
+                return True
+    return False
+
+
 def select_image_pages(batch: BatchResult, cap: int) -> tuple[list[ImageResult], Optional[str]]:
     """Pick which images carry imagery in the PDF (full page or gallery cell),
     ranked by detection count so a 250-image flight yields a readable report."""
@@ -722,16 +738,22 @@ def build_report(
     # 30 image pages to reach the numbers and the map they actually came for.
     story: list = []
     story += _cover(batch)
-    if cap_note:
-        story.insert(-1, Paragraph(cap_note, _SMALL))  # before the cover's PageBreak
+    note = cap_note if has_imagery(picked) else (
+        "No imagery is stored for this run, so the per-image pages and gallery are "
+        "omitted. Detections, GPS and statistics below are complete; every image is "
+        "listed in the Image Index.")
+    if note:
+        story.insert(-1, Paragraph(note, _SMALL))  # before the cover's PageBreak
     story += _summary_page(batch, ai_text, assets, map_dir=map_dir)
     story.append(PageBreak())
 
     # Only the worst few earn a full page; the rest go on the contact sheet.
-    detail = picked[:max(0, detail_pages)]
-    for im in detail:
-        story += _image_page(im, assets)
-    story += _gallery_pages(picked[len(detail):], assets)
+    # Both are skipped when the run holds no frames to draw.
+    if has_imagery(picked):
+        detail = picked[:max(0, detail_pages)]
+        for im in detail:
+            story += _image_page(im, assets)
+        story += _gallery_pages(picked[len(detail):], assets)
     story += _image_index(batch)
 
     doc.build(story, onFirstPage=_banner, onLaterPages=_banner, canvasmaker=_NumberedCanvas)

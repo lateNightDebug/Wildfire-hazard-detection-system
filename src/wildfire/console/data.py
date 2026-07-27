@@ -220,6 +220,9 @@ def scan_detail(run_id: str, settings: Settings) -> Optional[dict]:
             "error": im.get("error"),
         })
 
+    # A run imported from the cloud carries findings but no imagery, so the page
+    # must say why the viewer is empty instead of showing broken frames.
+    imported = _load_json(run_dir / ".cloud_import.json")
     batch_images = batch.get("images") or []
     summary.update({
         "batch_info": batch.get("batch_info") or {},
@@ -230,6 +233,9 @@ def scan_detail(run_id: str, settings: Settings) -> Optional[dict]:
         "reviewed_image_count": sum(1 for i in images if i["reviewed_by_user"]),
         "avg_confidence": round(sum(scores) / len(scores), 3) if scores else None,
         "peak_confidence": round(max(scores), 3) if scores else None,
+        "results_only": bool(imported),
+        "synced_from": (imported or {}).get("source") or None,
+        "imported_at": (imported or {}).get("imported_at"),
     })
     return summary
 

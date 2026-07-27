@@ -258,20 +258,40 @@ function drawPreview() {
   curImage = Math.min(curImage, ims.length - 1);
   const im = ims[curImage];
   const url = imageSrc(im);
+  // A results-only run genuinely has no photo to show; say that plainly instead
+  // of the generic "image unavailable", which reads like something broke.
+  const empty = DETAIL.results_only
+    ? `Results synced from ${esc((DETAIL.synced_from || {}).machine || "another machine")}<br>
+       <span style="opacity:.7;">detections and GPS are here; the photos stayed on that machine</span>`
+    : esc(im.error || "image unavailable");
   box.innerHTML = url
     ? `<div id="stage" style="position:relative; line-height:0;">
          <img id="stage-img" src="${esc(url)}" alt="${esc(im.name)}" draggable="false">
          ${EDIT ? overlaySvg(im) : ""}
        </div>`
-    : `<span class="mono" style="color:#cdd6c0; opacity:.5; font-size:12px;">${esc(im.error || "image unavailable")}</span>`;
+    : `<span class="mono" style="color:#cdd6c0; opacity:.5; font-size:12px; text-align:center; line-height:1.7;">${empty}</span>`;
   document.getElementById("preview-name").textContent = `${im.name} · ${curImage + 1} / ${ims.length}`;
   document.getElementById("thumbs").innerHTML = ims.map((t, i) => {
     const kind = imgKind(t);
+    // Check only images the operator explicitly marked reviewed (not auto).
+    const check = t.reviewed_by_user ? '<span class="thumb-check">&#10003;</span>' : "";
+    // No imagery was synced for an imported run, so a thumbnail request would
+    // 404 into a broken-image icon per frame. Show a labelled chip instead -
+    // the strip is still how you move between images.
+    if (DETAIL.results_only) {
+      const n = (t.detections || []).length;
+      const c = kind ? KIND[kind].color : "var(--border-2)";
+      return `<div class="thumb-wrap ${i === curImage ? "sel" : ""}" data-i="${i}" title="${esc(t.name)}">
+                <div class="thumb" style="display:flex; flex-direction:column; align-items:center;
+                     justify-content:center; border-left:3px solid ${c}; background:#f4f6f7; width:74px;">
+                  <span class="mono" style="font-size:9px; color:var(--muted-2);">${esc(t.name.slice(-8))}</span>
+                  <span class="mono" style="font-size:11px; font-weight:600;">${n}</span>
+                </div>${check}
+              </div>`;
+    }
     // Server-side small thumbs + lazy loading: a 100-image strip must not pull
     // 100 full-resolution annotated JPEGs into the page.
     const src = `/api/run-thumb/${encodeURIComponent(RUN_ID)}/${encodeURIComponent(t.name)}`;
-    // Check only images the operator explicitly marked reviewed (not auto).
-    const check = t.reviewed_by_user ? '<span class="thumb-check">&#10003;</span>' : "";
     return `<div class="thumb-wrap ${i === curImage ? "sel" : ""}" data-i="${i}" title="${esc(t.name)}">
               <img class="thumb ${kind ? "k-" + kind : ""}" loading="lazy" src="${src}" alt="${esc(t.name)}">${check}
             </div>`;
@@ -293,7 +313,9 @@ function drawReviewControls() {
   const done = ims.filter(i => i.reviewed_by_user).length;
   document.getElementById("review-progress").textContent =
     ims.length ? `reviewed ${done} / ${ims.length}` : "";
-  if (!ims.length) { btn.style.display = "none"; return; }
+  // Reviewing needs the photo, which a results-only import does not have. This
+  // runs after the initial hide, so it has to re-check rather than assume.
+  if (!ims.length || DETAIL.results_only) { btn.style.display = "none"; return; }
   btn.style.display = "";
   const on = !!ims[curImage].reviewed_by_user;
   btn.innerHTML = on ? "&#10003; Reviewed &middot; undo" : "&#10003; Mark reviewed";
@@ -565,7 +587,20 @@ function draw() {
   if (DETAIL.reviewed) chips.push('<span class="chip" style="color:var(--green); border-color:var(--green-line);">Reviewed</span>');
   const sev = DETAIL.severity || "none";
   chips.push(`<span class="badge ${sev}" style="font-size:11px; padding:3px 9px;">${sev === "none" ? "NO DETECTIONS" : SEV[sev].label.toUpperCase() + " SEVERITY"}</span>`);
+  if (DETAIL.results_only) {
+    const from = (DETAIL.synced_from || {}).machine || "another machine";
+    chips.push(`<span class="chip" title="Only the findings were synced — the photos stay on the machine that flew the mission.">☁ Results only · from ${esc(from)}</span>`);
+  }
   document.getElementById("d-chips").innerHTML = chips.join("");
+  // An imported run has findings but no imagery, so the actions that need a
+  // photo (box review, re-upload) cannot work and are hidden rather than left
+  // to fail on click.
+  if (DETAIL.results_only) {
+    for (const id of ["d-edit", "d-upload", "mark-reviewed"]) {
+      const el = document.getElementById(id);
+      if (el) el.style.display = "none";
+    }
+  }
 
   const hero = document.getElementById("risk-hero");
   hero.className = "risk-hero " + sev;
