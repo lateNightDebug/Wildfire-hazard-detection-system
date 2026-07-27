@@ -1,9 +1,10 @@
-"""Native desktop window for the console (pywebview over Edge WebView2).
+"""Native desktop window for the console (pywebview: WebView2 on Windows, WebKit on macOS).
 
 `python -m src.wildfire.console --desktop` starts the FastAPI server on a
 background thread and opens the UI in a real application window — no browser
-chrome, no terminal. Launched via pythonw.exe (see scripts/install_desktop_app.py)
-there is no console window at all: it looks and behaves like installed software.
+chrome, no terminal. Launched via pythonw.exe on Windows or from the .app bundle
+on macOS (see scripts/install_desktop_app.py) there is no console window at all:
+it looks and behaves like installed software.
 
 Closing the window shuts the server down.
 """
@@ -37,19 +38,42 @@ def _wait_for_port(port: int, timeout: float = 20.0) -> bool:
 def _app_icon() -> str | None:
     """Path to the window icon, built from the branding logo if it is missing.
 
-    Without this the title bar and the taskbar show the Python interpreter's
-    icon, because that is the process pywebview is hosted in - it looks like a
-    script someone left running rather than an installed application.
+    Without this the title bar and the taskbar (Windows) or the Dock (macOS)
+    show the Python interpreter's icon, because that is the process pywebview is
+    hosted in - it looks like a script someone left running rather than an
+    installed application. `ensure_icon` picks the right format per platform:
+    .ico for Windows, .icns for macOS.
     """
-    ico = PROJECT_ROOT / "assets" / "wildfire.ico"
-    if not ico.exists():
-        try:
-            from scripts.install_desktop_app import make_icon
+    try:
+        from scripts.install_desktop_app import ensure_icon
 
-            make_icon(ico)
-        except Exception:
-            return None
-    return str(ico) if ico.exists() else None
+        icon = ensure_icon()
+    except Exception:
+        return None
+    return str(icon) if icon is not None else None
+
+
+def _claim_macos_app_identity() -> None:
+    """Give the menu bar the app's name instead of "Python".
+
+    macOS reads the running executable's bundle, and a framework build re-execs
+    into its own Python.app - so the process is seen as plain Python no matter
+    what our bundle's Info.plist says. Overwriting CFBundleName on the in-memory
+    bundle before AppKit builds the menu is the standard fix. The SHORT name is
+    used on purpose: the window server clips an owner name at 30 characters, and
+    APP_TITLE is 32. Best-effort - a wrong menu title is not a reason to refuse
+    to open the window.
+    """
+    try:
+        from AppKit import NSBundle
+
+        from scripts.install_desktop_app import APP_NAME
+
+        info = NSBundle.mainBundle().infoDictionary()
+        if info is not None:
+            info["CFBundleName"] = APP_NAME
+    except Exception:
+        pass
 
 
 def run_desktop(port: int = 7861) -> None:
@@ -57,6 +81,9 @@ def run_desktop(port: int = 7861) -> None:
     import webview
 
     from .server import create_app
+
+    if sys.platform == "darwin":
+        _claim_macos_app_identity()
 
     config = uvicorn.Config(create_app(), host="127.0.0.1", port=port, log_level="warning")
     server = uvicorn.Server(config)

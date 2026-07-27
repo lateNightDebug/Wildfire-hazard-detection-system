@@ -10,15 +10,17 @@ connection** — designed for field laptops.
 
 ## 1. System requirements
 
+The application runs on **Windows 10/11** and on **macOS 11 or newer**.
+
 | | Minimum | Recommended |
 |---|---|---|
-| **OS** | Windows 10 64-bit (with [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/)) | Windows 11 (WebView2 built in) |
-| **CPU** | 4-core x86-64 | 8-core or better |
+| **OS** | Windows 10 64-bit (with [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/)) · macOS 11 Big Sur | Windows 11 (WebView2 built in) · macOS 14+ on Apple Silicon |
+| **CPU** | 4-core x86-64 · any Apple Silicon (M1+) or Intel Mac | 8-core or better |
 | **RAM** | 8 GB | 16 GB (32 GB if running LM Studio for AI report text) |
-| **GPU** | none — runs on CPU, slow | NVIDIA GPU, ≥ 4 GB VRAM, driver supporting CUDA 12.x |
+| **GPU** | none — runs on CPU, slow | Windows: NVIDIA GPU, ≥ 4 GB VRAM, driver supporting CUDA 12.x · macOS: Apple Silicon, used automatically through Metal (MPS) |
 | **Disk** | 15 GB free | 30 GB+ free, SSD |
 | **Display** | 1280 × 800 | 1920 × 1080 |
-| **Python** | 3.13 (installed by you; venv created by `install.bat`) | — |
+| **Python** | 3.13 (installed by you; venv created by the installer) | — |
 | **Internet** | install time only | also for model & map-tile downloads (one-time) |
 
 Performance reference: one 5280 × 3956 drone photo takes **~13 s on an RTX-class
@@ -27,20 +29,45 @@ Analysis writes ~10–15 MB of imagery per photo into `outputs/` — budget disk
 accordingly (a 250-image flight ≈ 3 GB; the output folder is configurable in
 Settings).
 
-macOS: the code supports Apple-Silicon (MPS) / CPU and has a
-`requirements-mac.txt`, but the desktop shortcut installer is Windows-only and
-macOS is **untested** — treat it as experimental.
+There is no CUDA on a Mac. Apple Silicon uses the built-in GPU through Metal
+(MPS) and needs no driver install; Intel Macs run on CPU, which works but is the
+slow end of the table above.
 
 ## 2. Installation
+
+The release archive contains the scripts for both platforms, and each filename
+says which OS it is for. **Run only the one matching your computer** — the two
+installers fetch different PyTorch builds, so the wrong one cannot work.
+
+| | Windows | macOS |
+|---|---|---|
+| Install (once) | `install-windows.bat` | `install-macos.command` |
+| Console in a browser | `run-console-windows.bat` | `run-console-macos.command` |
+| Legacy review app | `run-app-windows.bat` | `run-app-macos.command` |
+
+### Windows
 
 1. Install **Python 3.13** from python.org — tick *“Add python.exe to PATH”*.
 2. Unzip the release archive to a path **without spaces or non-ASCII characters**
    (e.g. `C:\Wildfire`).
-3. Double-click **`install.bat`** — creates the environment, installs PyTorch
+3. Double-click **`install-windows.bat`** — creates the environment, installs PyTorch
    (CUDA build, automatic CPU fallback) and all dependencies, and puts a
    **“Wildfire Hazard Detection”** shortcut on the Desktop and Start Menu.
    One-time, needs internet, ~4 GB download.
 4. Launch from the desktop shortcut — a native window opens, no terminal.
+
+### macOS
+
+1. Install **Python 3.13**: `brew install python@3.13` (or the python.org
+   installer).
+2. Unpack the release archive anywhere in your home folder.
+3. Double-click **`install-macos.command`** — Finder opens Terminal and runs it.
+   The same steps as above with the Apple Metal / CPU build of PyTorch, ending
+   with a **“Wildfire Hazard Detection”** app in `~/Applications` plus a
+   shortcut to it on the Desktop. One-time, needs internet, ~4 GB download.
+4. Double-click **“Wildfire Hazard Detection”** on the Desktop — a native window
+   opens, no terminal. Spotlight (⌘-Space) finds it by name too, and you can
+   drag it to the Dock. *(macOS 26 removed Launchpad — use Spotlight.)*
 
 Details and packaging instructions: see `INSTALL.md`.
 
@@ -117,8 +144,11 @@ Everything is local; nothing is uploaded anywhere.
 
 | Symptom | Fix |
 |---|---|
-| Window opens blank / never loads | Install the WebView2 runtime (Win 10), then relaunch |
-| “Port 7861 is in use” | Another copy is already running — check the taskbar / Task Manager |
+| Window opens blank / never loads | Windows: install the WebView2 runtime (Win 10), then relaunch. macOS: quit and reopen — the window is WebKit and needs no runtime |
+| “Port 7861 is in use” | Another copy is already running — check the taskbar / Task Manager, or the Dock / Activity Monitor on macOS |
+| macOS: nothing happens when you open the app | The venv moved or was rebuilt — re-run `install-macos.command`, which rewrites the launcher |
+| macOS: cannot find the app after installing | It is on the Desktop, and in `~/Applications` — which is **not** the “Applications” in the Finder sidebar (that one is `/Applications`). ⌘-Space and type the name always works |
+| macOS: the icon looks blank or generic | The icon cache is stale. Re-run `install-macos.command`; it re-registers the bundle and restarts the Dock |
 | Detection stuck at “loading detection models…” | First run downloads DeepForest weights — needs internet once; check `outputs/<run>/_worker.log` |
 | Every image says *no detections* with your ONNX model | Flip `onnx_normalize` to `0-1` or channel order to `BGR` in Settings |
 | Map is a stylized placeholder | No tiles cached for this area — Map → *⬇ Map data* |

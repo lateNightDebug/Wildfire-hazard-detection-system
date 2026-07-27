@@ -8,13 +8,14 @@ broken, how to run and verify things, and the mistakes already made.
 
 ## 1. What this project is
 
-A **fully-offline Windows desktop application** that turns drone photos of
-forest into a reviewed, GPS-accurate map of wildfire hazards and a PDF field
-report. Users are forestry / fire crews working **without internet**.
+A **fully-offline desktop application** for Windows and macOS that turns drone
+photos of forest into a reviewed, GPS-accurate map of wildfire hazards and a PDF
+field report. Users are forestry / fire crews working **without internet**.
 
 Three layers:
 1. **Detection** — SAHI tiled inference + YOLO11 (flame/smoke) + DeepForest
-   (dead-tree candidates) + optional custom ONNX model, on the local GPU.
+   (dead-tree candidates) + optional custom ONNX model, on the local GPU
+   (CUDA on Windows, Metal/MPS on Apple Silicon, CPU fallback either way).
 2. **Human review** — detections are *proposals*; the operator confirms,
    corrects, and draws missed boxes in the console. Confirmed boxes are both
    the report data **and** the training set.
@@ -37,8 +38,8 @@ map tile downloads (Esri). The app itself never needs the network.
    credential file (`Userbase samples/`) were removed on 2026-07-25 — they were a
    separate entry point that contradicted rule 7, and no code referenced them.
    Do not reintroduce a parallel UI.
-4. **Always use the project venv**: `.venv\Scripts\python.exe`. The system
-   Python has none of the dependencies.
+4. **Always use the project venv**: `.venv\Scripts\python.exe` on Windows,
+   `.venv/bin/python` on macOS. The system Python has none of the dependencies.
 5. **Restart the app/server after code changes.** Pages (HTML/JS) are read from
    disk per request, but Python is loaded at startup. Mixing a new page with an
    old server produces confusing errors ("Cannot read properties of undefined").
@@ -55,11 +56,12 @@ map tile downloads (Esri). The app itself never needs the network.
    requirement, not an implementation detail. Cloud sync exists but is optional,
    off by default and lazily imported — the app serves all its routes with
    `azure-storage-blob` absent, and a test asserts that.
-9. **Do not containerise.** Decided 2026-07-27. The product is a Windows desktop
-   app: native pywebview window plus local GPU inference, deployed to a field
-   laptop with no connectivity. A Linux container has neither a display nor GPU
+9. **Do not containerise.** Decided 2026-07-27. The product is a desktop app:
+   native pywebview window plus local GPU inference, deployed to a field laptop
+   with no connectivity. A Linux container has neither a display nor GPU
    passthrough, so a Dockerfile changes what the product is rather than how it
-   ships. Do not add one back.
+   ships. Do not add one back. (Supporting macOS as a second desktop target is
+   the opposite move and does not reopen this.)
 10. **Formatting is configured, not argued about.** `.editorconfig` and
     `.prettierrc.json` exist because one auto-format produced a 438-line diff
     carrying a single real change. `printWidth` is 120, measured so that
@@ -69,20 +71,34 @@ map tile downloads (Esri). The app itself never needs the network.
 
 ## 3. Environment and commands
 
+Substitute the venv interpreter for your platform: `.venv\Scripts\python.exe` on
+Windows, `.venv/bin/python` on macOS. `PY` below stands for whichever it is.
+
 ```powershell
 # Run the app (desktop window)
-.venv\Scripts\python.exe -m src.wildfire.console --desktop
+PY -m src.wildfire.console --desktop
 
 # Run a dev instance while the desktop app holds port 7861
-.venv\Scripts\python.exe -m src.wildfire.console --no-browser --port 7871
-#   ...and kill it when done (it is a background python.exe on that port)
+PY -m src.wildfire.console --no-browser --port 7871
+#   ...and kill it when done (it is a background python process on that port;
+#      on macOS: pkill -f "src.wildfire.console")
 
 # Tests (must stay green)
-.venv\Scripts\python.exe -m pytest -q
+PY -m pytest -q
 
 # Headless detection + report
-.venv\Scripts\python.exe -m scripts.run_detection <folder> --pdf
+PY -m scripts.run_detection <folder> --pdf
+
+# (Re)build the desktop launcher after moving the project or rebuilding the venv
+PY -m scripts.install_desktop_app
 ```
+
+Root scripts are named `<what>-<os>.<ext>` so neither platform can pick up the
+other's by accident: `install-windows.bat` / `install-macos.command`,
+`run-console-windows.bat` / `run-console-macos.command`, `run-app-windows.bat`
+/ `run-app-macos.command`. `.command` is the double-clickable macOS counterpart
+of `.bat`. Keep the pairing when adding a script; the macOS installer refuses to
+run on a non-Mac because it fetches Apple-only PyTorch wheels.
 
 Real data to test against:
 - `outputs/console_20260716_201807` — 6 real DJI L2 images, 384 dead trees +
@@ -190,6 +206,17 @@ outputs/<run>_<timestamp>/
   always needs the dark outline (`--kind-outline`, or the ring logic in
   `_pin_map_png`).
 - **Detection in a subprocess, reports in a background thread** — see rule 6.
+- **Platform differences are contained in three files, not sprinkled around.**
+  `device.py` picks CUDA -> MPS -> CPU; `scripts/install_desktop_app.py` holds
+  every launcher/icon difference (Windows `.lnk` + `.ico` via PowerShell, macOS
+  `.app` + `.icns` via `iconutil`); `console/desktop.py` holds the window
+  differences. Everything else is platform-neutral and should stay that way -
+  paths go through `pathlib` and URLs through `as_posix()`, never a hardcoded
+  separator. Two consequences worth knowing: the low-priority worker is a
+  Windows creation flag but an `os.nice(10)` call inside `worker.py` on POSIX
+  (`preexec_fn` is unsafe from the server's threads), and macOS needs
+  `CFBundleName` overwritten at runtime or the menu bar reads "Python", because
+  a framework Python re-execs into its own `Python.app`.
 - **Confirmed imagery is rendered once at Save-review**, and report generation
   reuses it (`_confirmed_batch(force_render=False)`). Re-rendering 100 full-res
   frames during a report took 32 s and froze the window.
@@ -220,7 +247,7 @@ outputs/<run>_<timestamp>/
 - **The frontend is deliberately a plain multi-page app with no build step.**
   One HTML file per page, one shared `console.js`, no framework, no bundler, no
   npm. This is a choice, not a gap:
-  - `install.bat` only needs Python. Adding React would mean shipping a Node
+  - The installers only need Python. Adding React would mean shipping a Node
     toolchain to a field laptop, or committing build output nobody can review.
   - Pages are read from disk per request, so editing HTML and refreshing shows
     the change immediately (this is also why rule 5 exists for Python).
@@ -284,13 +311,18 @@ outputs/<run>_<timestamp>/
 
 ## 9. Current state and open items
 
-- **Tests**: 72 passing. Modules without coverage: `llm.py`, `jobs.py`,
-  `worker.py`, `desktop.py`.
+- **Tests**: 120 passing, 4 skipped (fire/smoke weights absent; icon sizes too
+  small to measure). Green on Windows and on macOS 26 / Apple Silicon /
+  Python 3.13. Modules without coverage: `llm.py`, `jobs.py`, `worker.py`,
+  `desktop.py`.
+- **macOS**: supported as of 2026-07-27 and exercised end to end on an M-series
+  MacBook Air - `install-macos.command`, the `~/Applications` bundle, a detection job
+  through the real worker subprocess on MPS, and a generated PDF. Untested
+  there: Intel Macs, and cloud sync (no container was configured).
 - **Known weak spots**: ~14 silent `except Exception: pass` handlers and no
   unified logging (only `print` + `outputs/<run>/_worker.log`); training-set
   export supports Azure Custom Vision only (no YOLO/COCO); no CI; review UI has
-  almost no keyboard shortcuts; `outputs/` grows without an archive feature;
-  macOS untested.
+  almost no keyboard shortcuts; `outputs/` grows without an archive feature.
 - **Waiting on external conditions**: the trained `dead_tree.onnx` from Azure
   (drop into `models/` with its labels file), and a full 100-200 image flight
   shakedown.

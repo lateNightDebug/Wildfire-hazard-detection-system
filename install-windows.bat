@@ -1,6 +1,10 @@
 @echo off
 REM ============================================================
 REM  Wildfire Hazard Detection System - one-click installer
+REM  >>> WINDOWS ONLY. On macOS run install-macos.command instead. <<<
+REM
+REM  Double-click this file in Explorer.
+REM
 REM  Prerequisites on this machine:
 REM    1) Python 3.13        https://www.python.org/downloads/
 REM       (check "Add python.exe to PATH" during install)

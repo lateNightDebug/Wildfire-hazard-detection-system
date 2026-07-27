@@ -61,15 +61,36 @@ improves with every mission."*
 
 ## 4. Running it
 
-```bash
-# First time only (needs internet, ~4 GB):
-install.bat
+Every script in the project root says which OS it is for, in the filename.
+Never run the other platform's one — it installs the wrong PyTorch build.
 
-# Every day:
-double-click "Wildfire Hazard Detection" on the Desktop
+| | Windows | macOS |
+|---|---|---|
+| **Install** (first time only, ~4 GB) | `install-windows.bat` | `install-macos.command` |
+| **Console** (browser mode) | `run-console-windows.bat` | `run-console-macos.command` |
+| **Legacy review app** | `run-app-windows.bat` | `run-app-macos.command` |
+
+All six are double-clickable — `.command` is the macOS counterpart of `.bat`,
+so Finder opens Terminal and runs it with nothing to type.
+
+```bash
+# Every day, after the one-time install:
+Windows: double-click "Wildfire Hazard Detection" on the Desktop
+macOS:   double-click "Wildfire Hazard Detection" on the Desktop
+         (or Cmd-Space and type the name - macOS 26 removed Launchpad)
 ```
 
-If the shortcut is missing: `.venv\Scripts\python.exe -m src.wildfire.console --desktop`
+If the shortcut / app is missing, start it directly — or re-run
+`python -m scripts.install_desktop_app` to recreate it:
+
+```bash
+.venv\Scripts\python.exe -m src.wildfire.console --desktop   # Windows
+.venv/bin/python -m src.wildfire.console --desktop           # macOS
+```
+
+Everything below is written with the Windows path; on macOS swap
+`.venv\Scripts\python.exe` for `.venv/bin/python`, and the `-windows.bat`
+scripts for their `-macos.command` twins in the table above.
 
 **Optional:** start LM Studio with a model loaded *before* generating a report,
 or the report simply omits the AI analysis section (everything else still works).
@@ -173,8 +194,9 @@ environment instead, which takes precedence and keeps the secret out of
 
 | Symptom | Cause / Fix |
 |---------|-------------|
-| **Blank window on launch** | Windows 10 needs the WebView2 runtime — install it, relaunch. |
-| **"Port 7861 is in use"** | The app is already running — check the taskbar / Task Manager. |
+| **Blank window on launch** | Windows 10 needs the WebView2 runtime — install it, relaunch. macOS uses the built-in WebKit and needs nothing. |
+| **"Port 7861 is in use"** | The app is already running — check the taskbar / Task Manager, or the Dock / Activity Monitor on macOS. |
+| **macOS: the app icon bounces and quits** | The venv moved or was rebuilt, so the launcher points at a python that no longer exists. Re-run `./install.sh`. |
 | **Page looks unstyled, "Failed to fetch"** | The app was updated while running. **Close the window and reopen.** (Pages reload from disk, but the Python service only loads at startup.) |
 | **Detection stuck on "loading detection models…"** | First run downloads model weights — needs internet once. Check `outputs/<run>/_worker.log`. |
 | **Report has no AI section** | LM Studio isn't running. Optional — start it and regenerate. |
@@ -275,7 +297,10 @@ photo on SD card
 ## 13. Testing and committing
 
 ```bash
-.venv\Scripts\python.exe -m pytest -q        # 90 tests, must stay green
+# Once per machine - the installers skip these, they are not needed to RUN the app
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+
+.venv\Scripts\python.exe -m pytest -q        # 120 tests, must stay green
 ```
 
 `tests/test_frontend_contract.py` is the one to know about. The console has no
@@ -335,7 +360,7 @@ Admin/Pilot roles) and `Userbase samples/` (its sample credential CSV) were dele
 2026-07-25. Nothing referenced them, and they contradicted the no-account-system rule
 the product is described by. **There is one UI: `src/wildfire/console/`.**
 
-**Settled: we are not containerising.** The product is a Windows desktop app — a
+**Settled: we are not containerising.** The product is a desktop app — a
 native pywebview window plus local GPU inference — and it is deployed to a field
 laptop that has no connectivity. A Linux container has neither a display nor GPU
 passthrough by default, so containerising changes what the product *is* rather than

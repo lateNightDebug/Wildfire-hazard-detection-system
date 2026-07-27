@@ -34,5 +34,11 @@ trim_trailing_whitespace = false
 # Windows batch files genuinely need CRLF.
 end_of_line = crlf
 
+[*.{sh,command}]
+# The macOS/Unix counterparts genuinely need LF - a CR in the shebang line
+# makes the script fail with an error that names a file nobody can find.
+end_of_line = lf
+indent_size = 2
+
 [Makefile]
 indent_style = tab

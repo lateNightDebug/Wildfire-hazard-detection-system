@@ -12,9 +12,24 @@ UI showed when it was queued (and tests can inject settings).
 from __future__ import annotations
 
 import json
+import os
 import sys
 import traceback
 from pathlib import Path
+
+
+def _lower_priority() -> None:
+    """Demote this process so the console stays responsive during inference.
+
+    Windows gets BELOW_NORMAL_PRIORITY_CLASS from the parent at spawn time (see
+    jobs.py). POSIX has no equivalent creation flag, and `preexec_fn` is unsafe
+    to use from the server's threads, so on macOS/Linux the worker nices itself
+    down here instead - before torch is imported and starts claiming cores.
+    """
+    try:
+        os.nice(10)
+    except (AttributeError, OSError):  # no os.nice on Windows; a hardened host may refuse
+        pass
 
 
 def _write_progress(path: Path, state: str, done: int = 0, total: int = 0,
@@ -42,6 +57,7 @@ def _settings_from(spec: dict):
 
 
 def main() -> int:
+    _lower_priority()
     for _s in (sys.stdout, sys.stderr):
         try:
             _s.reconfigure(encoding="utf-8", errors="replace")

@@ -49,8 +49,10 @@ The main interface — a FastAPI app at `http://127.0.0.1:7861`, installable as 
 **desktop application** (native window, own icon, no terminal):
 
 ```bash
-python -m scripts.install_desktop_app   # Desktop + Start Menu shortcuts
-# alternatives: run_console.bat (browser mode) / python -m src.wildfire.console
+python -m scripts.install_desktop_app   # Windows: Desktop + Start Menu shortcuts
+                                        # macOS:   ~/Applications/<app>.app
+# alternatives: run-console-windows.bat / run-console-macos.command (browser mode)
+#               python -m src.wildfire.console
 ```
 
 | Page | What it does |
@@ -77,25 +79,38 @@ Key behaviors:
   area / whole Alberta / a custom rectangle (Esri permits offline export; Google/Bing do
   not). CLI equivalents: `scripts/fetch_map_tiles.py`, `scripts/fetch_map_overlays.py`
   (OSM roads/rivers/lakes).
-- The legacy Gradio annotator (`run_app.bat`, port 7860) still works but is no longer
+- The legacy Gradio annotator (`run-app-windows.bat` / `run-app-macos.command`, port 7860) still works but is no longer
   needed — review happens inside the console.
 
 ## Requirements & setup
 
-Minimums (details in [MANUAL.md](MANUAL.md)): Windows 10/11 64-bit, Python 3.13, 8 GB RAM,
-~15 GB disk; any NVIDIA GPU enables CUDA (CPU works, slower). macOS (MPS/CPU) is
-code-compatible but untested.
+Minimums (details in [MANUAL.md](MANUAL.md)): Windows 10/11 64-bit **or** macOS 11+,
+Python 3.13, 8 GB RAM, ~15 GB disk. Any NVIDIA GPU enables CUDA; Apple Silicon uses
+Metal (MPS) automatically. CPU works everywhere, just slower.
 
-```bash
+```powershell
+# Windows
 py -3.13 -m venv .venv
 .venv\Scripts\activate
 python -m pip install -U pip
-pip install -r requirements-win-cuda.txt   # CUDA torch FIRST (mac: requirements-mac.txt)
+pip install -r requirements-win-cuda.txt   # CUDA torch FIRST
 pip install -r requirements.txt
 pip install -r requirements-deadtree.txt   # DeepForest dead-tree proposer (heavy)
 ```
 
-Or just run **`install.bat`** — it does all of the above plus the desktop shortcut.
+```bash
+# macOS
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+pip install -r requirements-mac.txt        # CPU/MPS torch FIRST
+pip install -r requirements.txt
+pip install -r requirements-deadtree.txt
+```
+
+Or just double-click **`install-windows.bat`** / **`install-macos.command`** — either
+does all of the above plus the desktop app. Every script in the project root names
+its OS; run only your platform's, since the two pull different PyTorch builds.
 
 ## Headless CLI (optional)
 
@@ -207,7 +222,8 @@ If your model returns empty/garbled boxes, flip `onnx_normalize` (`0-255` ↔ `0
 ## Tests
 
 ```bash
-pytest -q     # 70 tests; heavy integration tests auto-skip without models
+pip install -r requirements-dev.txt   # pytest + pypdf, once per machine
+pytest -q     # 120 tests; heavy integration tests auto-skip without models
 ```
 
 ## Project layout

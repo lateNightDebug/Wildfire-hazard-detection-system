@@ -77,7 +77,9 @@ class JobManager:
         }), encoding="utf-8")
 
         # Below-normal priority keeps the console (and the operator's machine)
-        # responsive while torch saturates the cores.
+        # responsive while torch saturates the cores. These are Windows creation
+        # flags and resolve to 0 elsewhere (POSIX rejects a non-zero value); on
+        # macOS/Linux the worker nices itself down at startup instead.
         flags = (getattr(subprocess, "CREATE_NO_WINDOW", 0)
                  | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0))
         log = open(run_dir / "_worker.log", "ab")

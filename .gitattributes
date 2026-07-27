@@ -1,2 +1,16 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Line endings that are not a preference but a requirement: a .command/.sh
+# checked out with CRLF fails on "\r" in the shebang, and a .bat with LF
+# misbehaves in cmd. Matches the same split in .editorconfig.
+*.command text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Icons and fonts must never be line-ending normalized.
+*.ico binary
+*.icns binary
+*.png binary
+*.woff2 binary

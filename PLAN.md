@@ -359,6 +359,69 @@ Repo rule: commits carry no AI signature lines.
       inference; a Linux container has neither
 - [x] Suite **113 -> 114** tests
 
+## Batch 22 - macOS is a supported target (2026-07-27)
+
+- [x] **Verified on real Mac hardware**, closing the item that had sat under
+      "deliberately deferred": macOS 26 / Apple Silicon / Python 3.13, torch 2.13
+      on **MPS**, DeepForest and YOLO both loading, a detection job run through
+      the real console worker subprocess, and a PDF report generated from it.
+      `device.py` needed no change - the CUDA -> MPS -> CPU order was already right
+- [x] **Every root script now names its OS**, because two platforms sharing one
+      archive is exactly how someone runs the wrong installer and ends up with
+      CUDA wheels on a Mac. `install.bat` -> `install-windows.bat`,
+      `run_console.bat` -> `run-console-windows.bat`, `run_app.bat` ->
+      `run-app-windows.bat`, and the new macOS side is
+      `install-macos.command` / `run-console-macos.command` /
+      `run-app-macos.command`. `.command` rather than `.sh` so Finder
+      double-click works, matching the `.bat` experience instead of asking Mac
+      users to open a terminal. The macOS installer also hard-stops on a
+      non-Darwin host with a message naming the right script
+- [x] **`scripts/install_desktop_app.py` is cross-platform.** It now builds an
+      `.icns` with `iconutil` and writes `~/Applications/Wildfire Hazard
+      Detection.app` - Info.plist, icon, and a shell launcher pointing at
+      `.venv/bin/python`. Deliberately NOT py2app: freezing torch + DeepForest is
+      the same 8 GB problem INSTALL.md already rejected on Windows, and a
+      three-file bundle keeps working after a `git pull`. The Windows `.lnk` path
+      is untouched
+- [x] **Fixed the menu bar reading "Python"**: a framework Python re-execs into its
+      own `Python.app`, so the bundle's Info.plist never reaches AppKit.
+      `desktop.py` overwrites `CFBundleName` at runtime instead. It uses the SHORT
+      app name on purpose - the window server clips an owner name at 30 characters
+      and the full title is 32
+- [x] **Low-priority detection worker on POSIX**: `BELOW_NORMAL_PRIORITY_CLASS` is a
+      Windows creation flag with no Unix equivalent, and `preexec_fn` is unsafe
+      from the server's threads, so `worker.py` calls `os.nice(10)` on itself
+      before torch loads
+- [x] **`.gitattributes` pins line endings per file type** (`*.sh` LF, `*.bat`
+      CRLF), matching `.editorconfig`. Without it a Windows checkout hands the Mac
+      shell scripts with `\r` in the shebang, which fail with an unreadable error
+- [x] **`pypdf` added to `requirements-dev.txt`** - two report tests import it and
+      AGENTS.md already claimed it was installed, so a fresh venv failed 2 tests
+      that had nothing to do with the platform
+- [x] **Fixed a blank app icon on macOS 26**, found by looking at the installed
+      app rather than the code. `render_icon` used `Image.thumbnail()`, which
+      only ever SHRINKS: the mark cropped from `branding/logo.png` is ~200 px, so
+      the 256 px `.ico` scaled down to the intended 70% while the 1024 px `.icns`
+      kept it at 200 px - 20% of the tile. macOS 26 insets that into its own
+      rounded tile, so the app read as a blank white square in Finder and the
+      Dock. Now an explicit proportional resize that scales up as well as down.
+      `tests/test_app_icon.py` measures the mark's span at every generated size
+      and fails below 55% - it fails on the old code at 512 and 1024 and passes
+      at 256, which is exactly why eyeballing the `.ico` missed it. The mark is a
+      genuine upscale from a 200 px source; a larger `branding/logo.png` sharpens
+      it for free
+- [x] **A Desktop shortcut, and "it is in Launchpad" removed from every doc.**
+      `~/Applications` is not the "Applications" in the Finder sidebar (that is
+      `/Applications`), and **macOS 26 deleted Launchpad** - so the two places
+      the docs sent people were one wrong folder and one app that no longer
+      exists. The installer now also symlinks the bundle onto the Desktop, which
+      is what the Windows installer has always done, and re-registers with
+      LaunchServices + restarts the Dock so a rebuilt icon appears immediately
+      instead of after a logout
+- [x] Suite **114 -> 120** tests, green on macOS (4 skipped: the fire/smoke
+      weights, and icon sizes too small to measure), and the docs now describe
+      two supported platforms
+
 ## Waiting on external conditions
 
 - [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it
@@ -370,7 +433,7 @@ Repo rule: commits carry no AI signature lines.
 - [ ] Detection dedup tiers 2/3 (geometric projection -> ODM orthomosaic)
 - [ ] Slimmer reports for 200-image flights + GeoJSON export
 - [ ] Pipeline parallelism (switching to the ONNX model is itself the biggest speedup)
-- [ ] Verification on real Mac hardware (code already supports MPS/CPU, untested)
+- [ ] Intel Mac verification (Apple Silicon is done; Intel is CPU-only, same code path)
 - [ ] The Alerts feature itself
 
 ## Completed (archive)
@@ -386,4 +449,5 @@ Repo rule: commits carry no AI signature lines.
 - [x] Display-level severity (dead-tree density driven, configurable thresholds)
 - [x] Sorted run outputs (originals / annotated / gridmaps)
 - [x] Desktop application form (pywebview native window + icon + shortcuts)
+- [x] Windows and macOS both supported (CUDA / Metal-MPS / CPU, per-platform installers)
 - [x] Automated test suite
