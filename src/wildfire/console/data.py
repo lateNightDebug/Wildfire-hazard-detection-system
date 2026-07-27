@@ -239,6 +239,8 @@ def scan_detail(run_id: str, settings: Settings) -> Optional[dict]:
             "width": im.get("width"),
             "height": im.get("height"),
             "gps": im.get("gps"),
+            "altitude": im.get("altitude"),
+            "camera": im.get("camera"),
             "timestamp": im.get("timestamp"),
             "detections": dets,
             "confirmed": confirmed_by_path.get(str(im.get("path"))),  # None = boxes not saved
@@ -268,6 +270,10 @@ def scan_detail(run_id: str, settings: Settings) -> Optional[dict]:
         "results_only": bool(imported),
         "synced_from": (imported or {}).get("source") or None,
         "imported_at": (imported or {}).get("imported_at"),
+        # Sent so the page can grade a single frame with the same ladder the
+        # server used, instead of hardcoding numbers that drift from Settings.
+        "severity_thresholds": {"high": settings.severity_deadtrees_high,
+                                "medium": settings.severity_deadtrees_medium},
     })
     return summary
 

@@ -290,9 +290,32 @@ function fmtCoord(lat, lon) {
    Site-based Leaflet map used by Dashboard and the Map page (same data, same
    look). preferCanvas is essential: thousands of SVG overlay paths freeze the
    desktop WebView; the canvas renderer handles them easily. */
+/* Link to just this site's images inside a run, not the whole run. A site is a
+   physical location; opening it should show the frames taken there, not all 58
+   images of the flight that happened to include it. Sites can span runs, so
+   members are grouped by run and each run gets its own link. */
+function siteImageLinks(s, label) {
+  const byRun = new Map();
+  for (const m of s.members || []) {
+    if (!byRun.has(m.run_id)) byRun.set(m.run_id, []);
+    byRun.get(m.run_id).push(m.name);
+  }
+  return [...byRun.entries()].map(([runId, names]) => ({
+    runId, names,
+    url: `/scans/${encodeURIComponent(runId)}`
+       + `?images=${encodeURIComponent(names.join("|"))}`
+       + `&from=${encodeURIComponent(label)}`,
+  }));
+}
+
 function sitePopupHtml(s, i) {
-  const members = (s.members || []).slice(0, 4).map(m =>
-    `<div class="mono" style="font-size:10px; color:#6b6b63;">${esc(m.name)} · <a href="/scans/${encodeURIComponent(m.run_id)}" style="color:#2D5A2D; font-weight:600;">open run</a></div>`).join("");
+  const members = siteImageLinks(s, `Site ${i + 1}`).map(l => `
+    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-top:3px;">
+      <span class="mono" style="font-size:10px; color:#6b6b63; overflow:hidden;
+            text-overflow:ellipsis; white-space:nowrap;">${esc(l.runId)}</span>
+      <a href="${l.url}" style="color:#2D5A2D; font-weight:600; font-size:10px; white-space:nowrap;"
+         >${l.names.length} image${l.names.length === 1 ? "" : "s"} &rarr;</a>
+    </div>`).join("");
   const thumb = ((s.members || []).find(m => m.thumb) || {}).thumb;
   return `
     <div style="display:flex; gap:10px; max-width:250px;">

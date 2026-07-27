@@ -348,8 +348,9 @@ function drawSessions(src) {
       </div>
     </div>`;
 
-  // Pending flights grouped by day (newest day open); fully analyzed flights
-  // collapse into one section at the bottom so they stop cluttering the list.
+  // Every day group starts collapsed. Auto-opening the newest one meant a card
+  // folder like F:\Raw\2025 unrolled 108 flights on load and buried the rest of
+  // the page; the summary lines already say what is in each day.
   const pending = src.sessions.filter(s => !isDone(s));
   const analyzed = src.sessions.filter(isDone);
   const byDay = new Map();
@@ -358,11 +359,10 @@ function drawSessions(src) {
     byDay.get(s.day_key).sessions.push(s);
   }
   let html = "";
-  let first = true;
   for (const { day, sessions } of byDay.values()) {
     const total = sessions.reduce((a, s) => a + s.count, 0);
     html += `
-      <details ${first ? "open" : ""} style="margin-top:10px;">
+      <details style="margin-top:10px;">
         <summary style="cursor:pointer; font-size:11px; font-weight:600; letter-spacing:.4px; color:var(--muted-2); padding:4px 0;">
           ${esc(day).toUpperCase()} — ${sessions.length} flight${sessions.length === 1 ? "" : "s"} · ${total} images · pending
         </summary>
@@ -370,7 +370,6 @@ function drawSessions(src) {
           ${sessions.map(s => card(s, day)).join("")}
         </div>
       </details>`;
-    first = false;
   }
   if (!pending.length) html += '<div class="empty" style="padding:14px;">All flights analyzed ✓</div>';
   if (analyzed.length) {

@@ -49,6 +49,16 @@
     </div>
   </div>
 
+  <!-- Shown when the page was opened from a map site rather than the run list -->
+  <div id="filter-banner" style="display:none; align-items:center; justify-content:space-between;
+       gap:12px; margin-bottom:14px; padding:9px 14px; border-radius:9px;
+       background:var(--green-bg); border:1px solid var(--green-line);">
+    <span style="font-size:12px; color:var(--green);" id="filter-text"></span>
+    <button id="filter-clear" class="btn-quiet" style="padding:4px 11px; font-size:11px; white-space:nowrap;">
+      Show the whole run
+    </button>
+  </div>
+
   <div style="display:grid; grid-template-columns:1fr 360px; gap:16px;">
     <!-- left: viewer / editor. min-width:0 lets the column shrink so the
          thumbnail strip scrolls inside its card instead of stretching the page. -->
@@ -107,26 +117,42 @@
       </div>
     </div>
 
-    <!-- right: summary -->
-    <div style="display:flex; flex-direction:column; gap:16px;">
-      <div class="risk-hero none" id="risk-hero">
-        <div style="font-size:11px; font-weight:600; letter-spacing:.4px; opacity:.8;">DISPLAY SEVERITY</div>
-        <div style="font-size:28px; font-weight:700; margin-top:4px; line-height:1;" id="risk-label">—</div>
-        <div style="font-size:12px; margin-top:8px; opacity:.9;" id="risk-note"></div>
-      </div>
-
-      <div class="card" style="padding:16px 18px;">
-        <div style="font-size:13px; font-weight:600; margin-bottom:14px;">Detection Summary</div>
-        <div style="display:flex; flex-direction:column; gap:13px;" id="summary-rows"></div>
-      </div>
-
-      <div class="card" style="padding:16px 18px;">
-        <div style="font-size:13px; font-weight:600; margin-bottom:12px;">Session Info</div>
-        <div style="display:flex; flex-direction:column; gap:9px;" id="session-rows"></div>
-        <div style="display:flex; gap:8px; margin-top:15px;">
-          <a class="btn-quiet" style="flex:1; text-align:center; display:none;" id="d-pdf" target="_blank" rel="noopener">Open latest report</a>
+    <!-- right: THIS IMAGE first, then the run. The panel used to describe only
+         the run, which never changed while the operator flipped through 58
+         frames one at a time - so the column they were staring at answered a
+         question they had already read. Run-level facts are still here, folded
+         away, because they are looked up once and not watched. -->
+    <div id="side-col" style="display:flex; flex-direction:column; gap:12px;">
+      <div class="card" style="padding:15px 17px;">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; gap:8px;">
+          <span style="font-size:13px; font-weight:600;">This image</span>
+          <span class="mono" style="font-size:11px; color:var(--muted-3);" id="img-index"></span>
         </div>
+        <div class="mono" style="font-size:11px; color:var(--muted-2); margin-top:3px;
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" id="img-name"></div>
+        <div style="display:flex; align-items:center; gap:7px; margin-top:9px;" id="img-badges"></div>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;" id="img-rows"></div>
       </div>
+
+      <details class="card" id="run-details" style="padding:0;">
+        <summary style="cursor:pointer; padding:13px 17px; font-size:13px; font-weight:600;
+                        display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <span>Whole run</span>
+          <span id="run-summary-chip" style="font-weight:400;"></span>
+        </summary>
+        <div style="padding:0 17px 15px;">
+          <div class="risk-hero none" id="risk-hero" style="padding:13px 15px; margin-bottom:14px;">
+            <div style="font-size:10px; font-weight:600; letter-spacing:.4px; opacity:.85;">WORST IMAGE IN THIS RUN</div>
+            <div style="font-size:22px; font-weight:700; margin-top:3px; line-height:1;" id="risk-label">—</div>
+            <div style="font-size:11px; margin-top:7px; opacity:.9;" id="risk-note"></div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:12px;" id="summary-rows"></div>
+          <div style="height:1px; background:var(--line); margin:14px 0;"></div>
+          <div style="display:flex; flex-direction:column; gap:8px;" id="session-rows"></div>
+          <a class="btn-quiet" style="display:none; text-align:center; margin-top:14px;"
+             id="d-pdf" target="_blank" rel="noopener">Open latest report</a>
+        </div>
+      </details>
     </div>
   </div>
 </div>
@@ -135,6 +161,15 @@
 <script>
 renderNav("scans");
 const RUN_ID = decodeURIComponent(location.pathname.split("/").pop());
+
+/* ?images=a.jpg|b.jpg narrows the page to the frames taken at one hazard site,
+   so opening a map pin shows that location rather than the whole flight.
+   ALL_IMAGES keeps the full run so the filter can be lifted without a reload. */
+const PARAMS = new URLSearchParams(location.search);
+const IMAGE_FILTER = (PARAMS.get("images") || "").split("|").filter(Boolean);
+const FILTER_LABEL = PARAMS.get("from") || "selection";
+let ALL_IMAGES = null;
+
 let DETAIL = null;
 let curImage = 0;
 let curView = "annotated";
@@ -323,6 +358,9 @@ function drawPreview() {
   applyZoom();  // innerHTML replaced the stage — restore the current transform
   if (EDIT) wireOverlay();
   drawReviewControls();
+  // Hooked here rather than at every call site: this already runs on every
+  // image change, so the sidebar cannot fall out of step with the viewer.
+  drawImagePanel();
 }
 
 /* Per-image review check — an explicit operator action, persisted server-side. */
@@ -477,6 +515,65 @@ document.getElementById("save-review").addEventListener("click", async () => {
     btn.disabled = false; btn.textContent = "Save review → training set";
   }
 });
+
+/* The panel for the frame currently on screen. Redrawn on every image change,
+   which is the point: this is the part of the sidebar that should move when the
+   operator moves. */
+function drawImagePanel() {
+  const ims = DETAIL.images_detail;
+  const idx = document.getElementById("img-index");
+  const name = document.getElementById("img-name");
+  const badges = document.getElementById("img-badges");
+  const rows = document.getElementById("img-rows");
+  if (!ims.length) {
+    idx.textContent = ""; name.textContent = "—";
+    badges.innerHTML = ""; rows.innerHTML = "";
+    return;
+  }
+  const im = ims[curImage];
+  const counts = im.counts || {};
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  // This frame's own grade, using the same ladder as the run - so a quiet frame
+  // inside a High run is visibly quiet.
+  const sev = imageSeverity(counts);
+
+  idx.textContent = `${curImage + 1} / ${ims.length}`;
+  name.textContent = im.name;
+  name.title = im.name;
+  badges.innerHTML = sevBadge(sev)
+    + (im.reviewed_by_user
+        ? '<span class="badge low">&#10003; REVIEWED</span>'
+        : '<span class="badge none">not reviewed</span>');
+
+  const kv = (k, v, mono = true) => `
+    <div class="kv"><span class="k">${esc(k)}</span>
+      <span class="${mono ? "v" : ""}" style="${mono ? "" : "font-size:12px;"}">${esc(v)}</span></div>`;
+  const typeRows = Object.entries(counts).map(([k, v]) => `
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <span style="display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--text-2);">
+        <span style="width:9px; height:9px; border-radius:2px; background:${LABEL_COLORS[k] || "#d4af37"};"></span>${esc(k)}</span>
+      <span class="mono" style="font-size:13px; font-weight:600;">${v}</span>
+    </div>`).join("");
+
+  rows.innerHTML =
+    (typeRows || '<div style="font-size:12px; color:var(--muted-3);">No detections in this image.</div>')
+    + `<div style="height:1px; background:var(--line); margin:2px 0;"></div>`
+    + kv("Detections", total)
+    + kv("GPS", im.gps ? fmtCoord(im.gps[0], im.gps[1]) : "not embedded")
+    + (im.altitude != null ? kv("Altitude", `${Number(im.altitude).toFixed(1)} m`) : "")
+    + (im.timestamp ? kv("Captured", im.timestamp) : "")
+    + (im.confirmed ? kv("Confirmed boxes", im.confirmed.length) : "");
+}
+
+/* Same ladder as the run badge, applied to one frame. */
+function imageSeverity(counts) {
+  if (counts["Flame"]) return "high";
+  const dead = counts["Dead Tree"] || 0;
+  const t = DETAIL.severity_thresholds || {};
+  if (dead >= (t.high ?? 80)) return "high";
+  if (counts["Smoke"] || dead >= (t.medium ?? 45)) return "medium";
+  return Object.values(counts).some(v => v) ? "low" : null;
+}
 
 /* ------------------------------------------------------------- tables & panels */
 function drawDetTable() {
@@ -643,6 +740,11 @@ function draw() {
       + `${DETAIL.flame_images ? ` &middot; flame in ${DETAIL.flame_images}` : ""}.</span>`
     : esc(SEV_NOTE[sev] || "");
 
+  // The fold has to be worth leaving closed, so its header carries the badge
+  // and the mix bar rather than just the word "Whole run".
+  document.getElementById("run-summary-chip").innerHTML =
+    sevBadge(sev) + " " + sevMixBar(DETAIL.severity_mix, DETAIL.images);
+
   drawPreview(); drawDetTable(); drawSummary(); drawSession();
 }
 
@@ -727,8 +829,48 @@ api("/api/settings").then(s => {
   }
 }).catch(() => {});
 
+/* Applying the filter to images_detail (rather than filtering at every use)
+   means the viewer, thumbnails, detection table and review editor all narrow
+   together and their index arithmetic keeps working untouched. Saving a review
+   while filtered would write only the visible frames, so review is blocked
+   until the filter is cleared. */
+let FILTER_CLEARED = false;
+
+function applyImageFilter() {
+  const banner = document.getElementById("filter-banner");
+  if (!ALL_IMAGES) return;
+  if (!IMAGE_FILTER.length || FILTER_CLEARED) {
+    DETAIL.images_detail = ALL_IMAGES;
+    banner.style.display = "none";
+    document.getElementById("d-edit").disabled = false;
+    return;
+  }
+  const want = new Set(IMAGE_FILTER);
+  const hit = ALL_IMAGES.filter(im => want.has(im.name));
+  DETAIL.images_detail = hit.length ? hit : ALL_IMAGES;
+  banner.style.display = "flex";
+  document.getElementById("filter-text").innerHTML = hit.length
+    ? `Showing <b>${hit.length}</b> image${hit.length === 1 ? "" : "s"} from `
+      + `<b>${esc(FILTER_LABEL)}</b> &mdash; ${ALL_IMAGES.length} in the full run.`
+    : `None of ${esc(FILTER_LABEL)}'s images are in this run; showing all ${ALL_IMAGES.length}.`;
+  // Review edits the whole run's labels, so it cannot run on a subset.
+  document.getElementById("d-edit").disabled = hit.length > 0;
+}
+
+document.getElementById("filter-clear").addEventListener("click", () => {
+  FILTER_CLEARED = true;
+  curImage = 0;
+  applyImageFilter();
+  draw();
+});
+
 api(`/api/scans/${encodeURIComponent(RUN_ID)}`)
-  .then(d => { DETAIL = d; draw(); })
+  .then(d => {
+    DETAIL = d;
+    ALL_IMAGES = d.images_detail;
+    applyImageFilter();
+    draw();
+  })
   .catch(e => {
     document.getElementById("d-title").textContent = "Scan not found";
     document.getElementById("d-sub").textContent = e.message;

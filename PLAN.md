@@ -315,6 +315,27 @@ Repo rule: commits carry no AI signature lines.
 - [x] Docstrings trimmed 109 lines -> 62, none now longer than its own function
 - [x] Suite **112 -> 113** tests
 
+## Batch 20 - open a site, not a run (2026-07-27)
+
+- [x] **Map sites open their own images**: a hazard site is a physical location,
+      but clicking one opened the entire flight that happened to include it. The
+      popup now links to `?images=a|b|c`, which narrows the viewer, thumbnails
+      and detection table to the frames taken there, with a banner and a "show
+      the whole run" way back. Review is disabled while filtered, since saving
+      would write labels for only the visible subset
+- [x] **Scan Detail sidebar leads with the current image**: it described the run
+      while the operator flipped through 58 frames one at a time, so the column
+      they were watching never moved. "This image" now shows that frame's own
+      severity, review state, per-type counts, GPS, altitude and capture time,
+      and it redraws with the viewer. Run-level facts moved into a collapsed
+      "Whole run" fold whose header still carries the badge and mix bar
+- [x] Per-frame grading uses thresholds sent by the server, so it cannot drift
+      from Settings the way a hardcoded copy would
+- [x] **Mission folder day groups start collapsed**: the newest group auto-opened
+      and unrolled 108 flights on load
+- [x] Dashboard Recent Scans rows restructured into three tiers (when + verdict,
+      what was found, then the id) instead of one wrapping line
+
 ## Waiting on external conditions
 
 - [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it

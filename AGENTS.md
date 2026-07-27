@@ -151,6 +151,10 @@ outputs/<run>_<timestamp>/
 - **Severity (High/Medium/Low) is display-only**, derived from detection type
   and dead-tree density (thresholds in settings). It is never stored in
   batch.json/labels.json and never appears as a data field.
+- **A map site is a place, a run is a flight.** Site popups link to
+  `/scans/<run>?images=a|b|c` so opening a pin shows the frames taken there, not
+  the whole flight. Review is disabled while filtered because saving labels
+  writes the run's whole set and a subset would silently drop the rest.
 - **A run's badge is its WORST image, never a verdict on the run.** Flame in one
   frame makes the whole run High, which is correct for triage and misleading on
   its own -- a real 58-image flight reads High off 6 flame frames while the mix
