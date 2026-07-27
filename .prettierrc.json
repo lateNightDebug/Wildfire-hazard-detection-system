@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "Prettier settings for the console's HTML/CSS/JS. Prettier is not run in CI",
+    "and is not required to work here - this file exists so that when someone's",
+    "editor formats on save, everyone gets the same bytes instead of a 437-line",
+    "diff hiding a one-line change.",
+    "printWidth is 120, chosen by measuring the existing files: 96% of lines are",
+    "already under it, so adopting this config does not itself cause the reformat",
+    "storm it is meant to prevent. At Prettier's default 80 it would rewrap 19%.",
+    "If you do reformat a file, do it in its own commit with nothing else in it."
+  ],
+  "printWidth": 120,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "es5",
+  "bracketSameLine": true,
+  "htmlWhitespaceSensitivity": "ignore",
+  "endOfLine": "lf",
+  "overrides": [
+    {
+      "files": "*.md",
+      "options": { "proseWrap": "preserve" }
+    }
+  ]
+}

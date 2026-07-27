@@ -180,6 +180,25 @@ def test_page_loads_the_shared_script_when_it_uses_it(page: Path):
     assert tag < first_inline, f"{page.name} loads console.js after its own script"
 
 
+def test_severity_colours_are_not_duplicated_as_hex():
+    """SEV in console.js must reference the CSS tokens, not copy them.
+
+    It used to hold hex literals of the :root values. When those were darkened
+    for contrast the copies were missed, so the severity mix bar drew #E05555
+    while the badge beside it drew #D82929 - two different reds on one row,
+    within a single axis. Referencing var() makes that drift impossible.
+    """
+    src = SHARED_JS.read_text(encoding="utf-8")
+    m = re.search(r"const SEV = \{(.*?)\n\};", src, re.S)
+    assert m, "SEV block not found in console.js"
+    block = m.group(1)
+    assert not re.search(r"#[0-9a-fA-F]{3,6}", block), (
+        "SEV carries a hex literal again; use var(--red) / var(--amber) / "
+        "var(--green-2) so it cannot drift from :root")
+    for token in ("var(--red)", "var(--amber)", "var(--green-2)"):
+        assert token in block, f"SEV should reference {token}"
+
+
 def test_hazard_colour_helpers_are_still_wired_up():
     """The hazard-type helpers are what this file mainly exists to protect.
 
@@ -197,13 +216,12 @@ def test_hazard_colour_helpers_are_still_wired_up():
         assert len(re.findall(rf"\b{helper}\s*\(", everything)) > 1, \
             f"{helper} is defined but never called - dead helper?"
 
-    # The retired hazard-TYPE palette must not creep back into a page. Note
-    # #F0A500 is deliberately absent from this list: it is still --amber, the
-    # medium-SEVERITY colour, which is a separate axis and legitimately appears
-    # as a UI accent.
+    # The retired hazard-TYPE palette must not creep back into a page.
     retired = {"#FFD700": "old dead-tree yellow",
                "#FB8C00": "detail.html's drifted smoke orange",
-               "#E53935": "detail.html's drifted flame red"}
+               "#E53935": "detail.html's drifted flame red",
+               "#F0A500": "pre-contrast amber, now --amber",
+               "#E05555": "pre-contrast severity red, now --red"}
     for page in _pages():
         # Comments are exempt: the code comments explaining WHY these values were
         # retired necessarily quote them.
@@ -211,6 +229,6 @@ def test_hazard_colour_helpers_are_still_wired_up():
                                       flags=re.S))
         for hexval, what in retired.items():
             assert hexval not in text, (
-                f"{page.name} reintroduces {hexval} ({what}); hazard-type colours "
+                f"{page.name} reintroduces {hexval} ({what}); these colours "
                 f"belong in KIND in console.js and :root in console.css, not in a page"
             )

@@ -1,9 +1,14 @@
 /* Shared console helpers: top nav, fetch wrapper, formatting, severity map. */
 
+/* Colours are CSS variable references, not literals. They used to be hex copies
+   of the :root tokens and drifted the moment those were darkened for contrast -
+   the severity mix bar drew #E05555 while the badge beside it drew #D82929, two
+   different reds on the same row. Referencing the token means one value wins,
+   including any brand override. */
 const SEV = {
-  high:   { label: "High",   color: "#E05555" },
-  medium: { label: "Medium", color: "#F0A500" },
-  low:    { label: "Low",    color: "#3A9A3A" },
+  high:   { label: "High",   color: "var(--red)" },
+  medium: { label: "Medium", color: "var(--amber)" },
+  low:    { label: "Low",    color: "var(--green-2)" },
 };
 
 /* Hazard TYPE colors and icons — same language as the annotation boxes, and a

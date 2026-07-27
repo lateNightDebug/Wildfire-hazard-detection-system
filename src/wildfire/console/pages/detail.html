@@ -8,9 +8,13 @@
 <style>
   .preview-box { overflow:hidden; }
   #stage { transform-origin: 0 0; }
+  /* Locate-a-detection ring. Uses the severity token rather than a hex copy so
+     it tracks the palette; colour-mix supplies the fading halo. */
   @keyframes focusPulse {
-    0%, 100% { box-shadow: 0 0 0 3px #E05555, 0 0 18px 6px #E0555588; }
-    50%      { box-shadow: 0 0 0 10px #E05555cc, 0 0 26px 10px #E05555aa; }
+    0%, 100% { box-shadow: 0 0 0 3px var(--red),
+                           0 0 18px 6px color-mix(in srgb, var(--red) 53%, transparent); }
+    50%      { box-shadow: 0 0 0 10px color-mix(in srgb, var(--red) 80%, transparent),
+                           0 0 26px 10px color-mix(in srgb, var(--red) 67%, transparent); }
   }
   #det-table [data-di] { cursor: pointer; }
   #det-table [data-di]:hover { background: #faf9f4; }

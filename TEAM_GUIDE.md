@@ -296,16 +296,22 @@ function it calls actually exists. **If they fail after you rename something in
 Everyone works on their own branch and nobody merges into `main` without saying so
 first — a surprise merge interrupts whoever is mid-change.
 
-**Agree on formatting, or every merge becomes a fight.** A branch once arrived with
+**Formatting is settled — there are config files now.** A branch once arrived with
 438 changed lines in `dashboard.html` of which exactly **one** was a real edit; the
 other 437 were an editor's auto-format (single-line SVGs split across lines, spaces
-added inside CSS). That is invisible in the browser and enormous in a diff, and it
-buries the real change. Two habits fix it:
+added inside CSS). Invisible in the browser, enormous in a diff, and it buries the
+change a reviewer needs to see. The repo now carries:
 
-- Keep auto-format **off** for files you are not otherwise changing, or agree on one
-  shared config (`.editorconfig` / `.prettierrc`) so everyone produces the same bytes.
-- If you do want to reformat, put it in **its own commit** with nothing else in it.
-  A reviewer can then skip it in one glance instead of reading 437 lines.
+- **`.editorconfig`** — charset, line endings, indent width per file type. VS Code,
+  Visual Studio, PyCharm and Vim honour it (some need the EditorConfig plugin).
+- **`.prettierrc.json`** — HTML/CSS/JS settings, `printWidth: 120`. That number was
+  measured, not picked: 96% of the existing lines are already under it, so adopting
+  the config does not itself trigger the reformat storm it prevents. Prettier's
+  default of 80 would have rewrapped 19% of the codebase on first save.
+
+Neither is enforced at commit time. The point is that everyone's editor already
+agrees. **If you do reformat a file, put it in its own commit** with nothing else in
+it — a reviewer can then skip it in one glance.
 
 **Reading a diff that looks huge?** Check whether it is real before panicking:
 
@@ -329,20 +335,21 @@ Admin/Pilot roles) and `Userbase samples/` (its sample credential CSV) were dele
 2026-07-25. Nothing referenced them, and they contradicted the no-account-system rule
 the product is described by. **There is one UI: `src/wildfire/console/`.**
 
-**Still open — anything that moves data or the app off the field laptop.** Cloud for
-**training** (Azure Custom Vision) is part of the design and always was. Two newer
-pieces of work are not obviously on that side of the line and need a decision before
-they land:
+**Settled: we are not containerising.** The product is a Windows desktop app — a
+native pywebview window plus local GPU inference — and it is deployed to a field
+laptop that has no connectivity. A Linux container has neither a display nor GPU
+passthrough by default, so containerising changes what the product *is* rather than
+how it ships. The attempt on `styling_and_UX` demonstrates the mismatch concretely:
+its `Dockerfile` uses a Linux base image with `install.bat` as the entry point, so
+there is no `CMD.exe` to run it. **If asked in a review, the answer is that we
+evaluated it and it does not fit a desktop application** — that is an engineering
+decision with a reason, which is worth more than a container that does not start.
 
-- **Optional Azure Blob upload of run folders.** Off by default and lazily imported, so
-  it does not break an offline install — but it does mean survey imagery can leave the
-  machine, and "nothing is uploaded anywhere" (section 6) stops being true as written.
-  If we keep it, the client has to agree, the README/manual wording has to change, and
-  `azure-storage-blob` belongs in an optional extra rather than plain `requirements.txt`.
-- **Docker.** The product is a Windows desktop app: a native pywebview window plus local
-  GPU inference. A Linux container has neither by default, so containerising it changes
-  what the product *is*, not just how it ships. Worth being explicit about what problem
-  the container is meant to solve.
+**Settled: cloud sync ships, and it carries findings only.** Off by default, lazily
+imported (an install without `azure-storage-blob` runs normally), and it uploads a
+small results JSON rather than imagery — 2,056 MB of runs becomes 48 KB. See
+"What actually gets shared" above. This is a course requirement; the client is not
+expected to enable it.
 
 ## 14. Gotchas (things that already bit us)
 

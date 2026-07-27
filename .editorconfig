@@ -1,0 +1,38 @@
+# Shared formatting so editors stop rewriting each other's files.
+#
+# This exists because a branch once arrived with 438 changed lines in
+# dashboard.html of which exactly ONE was a real edit; the rest was an editor's
+# auto-format. That is invisible in the browser, enormous in a diff, and it
+# buries the change a reviewer actually needs to see.
+#
+# Supported natively by VS Code, Visual Studio, PyCharm and Vim (some need the
+# EditorConfig plugin). Nothing here is enforced at commit time on purpose -
+# the point is that everyone's editor already agrees.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.{html,css,js,json}]
+indent_size = 2
+
+[*.md]
+indent_size = 2
+# Markdown gives two trailing spaces meaning, so they must survive.
+trim_trailing_whitespace = false
+
+[*.{bat,cmd}]
+# Windows batch files genuinely need CRLF.
+end_of_line = crlf
+
+[Makefile]
+indent_style = tab

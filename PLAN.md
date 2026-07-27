@@ -336,6 +336,29 @@ Repo rule: commits carry no AI signature lines.
 - [x] Dashboard Recent Scans rows restructured into three tiers (when + verdict,
       what was found, then the id) instead of one wrapping line
 
+## Batch 21 - one red, shared formatting, no Docker (2026-07-27)
+
+- [x] **The two reds were one axis disagreeing with itself.** `SEV` in console.js
+      held hex copies of the `:root` tokens; when those were darkened for contrast
+      the copies were missed, so the severity mix bar drew `#E05555` while the
+      badge beside it drew `#D82929` - on the same row. SEV now references
+      `var(--red)` / `var(--amber)` / `var(--green-2)`, and a test fails if a hex
+      literal reappears there. The stat-card icons and the locate-a-detection ring
+      point at the tokens too
+- [x] **Did NOT darken `--kind-flame` to match**, reversing an earlier suggestion:
+      measured, `#D82929` drops flame-vs-dark-map contrast to 2.34 (below the 3:1
+      WCAG asks of graphics, and pins sit on dark satellite) and collapses
+      flame-vs-smoke separation to 1.10, undoing the type distinction. Hazard type
+      and severity stay separate axes, as the hard rules require
+- [x] **Shared formatting config**: `.editorconfig` plus `.prettierrc.json` with
+      `printWidth: 120` - measured against the existing files, where 96% of lines
+      already fit, so adopting it does not itself cause a reformat storm.
+      Prettier's default 80 would have rewrapped 19%
+- [x] **Decided against containerising** and wrote it into the hard rules. The
+      product is a Windows desktop app with a native window and local GPU
+      inference; a Linux container has neither
+- [x] Suite **113 -> 114** tests
+
 ## Waiting on external conditions
 
 - [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it

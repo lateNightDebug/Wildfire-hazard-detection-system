@@ -52,7 +52,18 @@ map tile downloads (Esri). The app itself never needs the network.
    per-device, expiring, revocable access without any app-side auth. Do not
    build one; do not add a login screen.
 8. **Do not add cloud dependencies to the runtime.** Offline-first is a client
-   requirement, not an implementation detail.
+   requirement, not an implementation detail. Cloud sync exists but is optional,
+   off by default and lazily imported — the app serves all its routes with
+   `azure-storage-blob` absent, and a test asserts that.
+9. **Do not containerise.** Decided 2026-07-27. The product is a Windows desktop
+   app: native pywebview window plus local GPU inference, deployed to a field
+   laptop with no connectivity. A Linux container has neither a display nor GPU
+   passthrough, so a Dockerfile changes what the product is rather than how it
+   ships. Do not add one back.
+10. **Formatting is configured, not argued about.** `.editorconfig` and
+    `.prettierrc.json` exist because one auto-format produced a 438-line diff
+    carrying a single real change. `printWidth` is 120, measured so that
+    adopting it rewraps almost nothing. Reformatting goes in its own commit.
 
 ---
 
