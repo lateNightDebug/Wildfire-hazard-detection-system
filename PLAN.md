@@ -227,6 +227,32 @@ Repo rule: commits carry no AI signature lines.
       the retired `#FFD700` for unknown labels; now falls back to `KIND.deadtree.color`
 - [x] Suite: **72 -> 90 tests**, all green
 
+## Batch 17 - merged Tessa; scoped cloud credentials (2026-07-26)
+
+- [x] **Merged `Tessa`**: optional Azure Blob sync plus her console accessibility
+      pass. Two strands of accessibility work met in console.css and both kept -
+      hers raises text/severity contrast (`--muted-2/-3`, `--faint`, `--red`,
+      `--amber`, `--green-2`, plus `label for=` and `img alt`), mine separates the
+      hazard-TYPE palette and adds per-type icons. Six files conflicted; each was
+      resolved as "both sides", not "pick a side"
+- [x] **Fixed a silent conflict the merge exposed**: `applyBrandingColors()` writes
+      `--green-2` from `branding/brand.json` at runtime, so it was overwriting her
+      darkened green with the old lighter one - her contrast fix had no visible
+      effect at all. brand.json now carries the darker value and the function says
+      it wins over console.css
+- [x] **Cloud credentials can now be scoped**: the app accepts a portal **Blob SAS
+      URL** (container-level or account-level) as well as the original account-key
+      connection string. A SAS reaches one container, can be issued per device,
+      expires, and is revocable alone; the account key it replaces grants
+      read/write/delete over the entire storage account forever. *Test connection*
+      reports which kind is in use and warns on the account key
+- [x] `_ensure_container()` tolerates a scoped token that can neither probe nor
+      create the container - that is the intended setup, not a failure
+- [x] **Confirmed no account system is needed** even though sync spans machines:
+      Azure Storage is the identity layer. Recorded in AGENTS.md hard rule 7
+- [x] Suite **90 -> 102** tests. Verified the app still starts and serves all 44
+      routes with `azure-storage-blob` absent, so offline installs are unaffected
+
 ## Waiting on external conditions
 
 - [ ] **Plug in the trained dead_tree.onnx** (model still training on Azure; drop it

@@ -129,9 +129,25 @@ folder (images, JSON, PDF) to an **Azure Blob Storage** container:
 - **Manual**: a "☁ Sync to cloud" button on each run's Scan Detail page.
 - **Automatic**: enable "Auto-upload" and a run syncs itself right after its report finishes.
 - **Incremental**: re-syncing (e.g. after a review pass) only uploads files that changed.
-- Requires `pip install azure-storage-blob` (already in `requirements.txt`) and a storage
-  account connection string, set in Settings or via the `AZURE_STORAGE_CONNECTION_STRING`
-  environment variable (preferred — keeps the secret out of `config/settings.json`).
+- Requires `pip install azure-storage-blob` (already in `requirements.txt`). The package is
+  imported lazily, so an install without it runs normally with cloud sync switched off.
+
+**There is no login and no account system.** Access is whatever the credential allows, so
+the credential *is* the boundary — pick a narrow one.
+
+*Admin, once:* create a Storage Account and a **private** container (`wildfire-runs`), then
+open the container → *Shared access tokens* → permissions **Read, Write, List** (leave
+**Delete** off) → set an expiry → copy the generated **Blob SAS URL**.
+
+*Each machine, once:* Settings → Cloud sync → paste that URL → *Test connection* → enable.
+No username, no password. On shared machines set `AZURE_STORAGE_CONNECTION_STRING` instead
+and the secret never touches `config/settings.json`.
+
+A full connection string containing `AccountKey=` is also accepted, and *Test connection*
+will say so — that key grants read/write/**delete** across the whole storage account and
+never expires, so it is the wrong thing to copy onto field laptops. A scoped SAS reaches
+one container, can be issued per device, expires on its own, and can be revoked
+individually. Note a scoped token cannot create its container: make it in the portal first.
 
 ## Detection models
 

@@ -192,18 +192,32 @@
           <label class="switch"><input type="checkbox" id="cloud_enabled"> on</label>
         </div>
         <div class="form-row">
-          <label for="azure_connection_string">Azure connection string</label>
+          <label for="azure_connection_string">SAS URL or connection string</label>
           <div>
             <input class="input" id="azure_connection_string" type="password" spellcheck="false"
-                   placeholder="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...">
-            <div class="hint">Stored in <span class="mono">config/settings.json</span>. For shared
-              machines, set the <span class="mono">AZURE_STORAGE_CONNECTION_STRING</span>
-              environment variable instead — it takes precedence.</div>
+                   placeholder="https://account.blob.core.windows.net/wildfire-runs?sv=...&amp;sig=...">
+            <div class="hint">
+              <b>Prefer a SAS URL.</b> In the Azure portal open the container &rarr;
+              <i>Shared access tokens</i> &rarr; permissions <span class="mono">Read, Write, List</span>
+              (leave <span class="mono">Delete</span> off), set an expiry, then paste the
+              generated <i>Blob SAS URL</i> here. It only reaches this one container and
+              stops working on its own.<br>
+              A full connection string containing <span class="mono">AccountKey=</span> also
+              works, but that key grants read/write/<b>delete</b> over the entire storage
+              account and never expires &mdash; avoid copying it onto field laptops.<br>
+              Stored in <span class="mono">config/settings.json</span>. On shared machines set
+              <span class="mono">AZURE_STORAGE_CONNECTION_STRING</span> instead &mdash; it wins
+              over this field and keeps the secret off disk.
+            </div>
           </div>
         </div>
         <div class="form-row">
           <label for="azure_container">Container name</label>
-          <input class="input" id="azure_container" type="text" spellcheck="false">
+          <div>
+            <input class="input" id="azure_container" type="text" spellcheck="false">
+            <div class="hint">Ignored when the SAS URL already names a container. Create the
+              container in the portal first &mdash; a scoped SAS token cannot create it.</div>
+          </div>
         </div>
         <div class="form-row">
           <span class="row-label">Auto-upload</span>

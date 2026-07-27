@@ -47,8 +47,10 @@ map tile downloads (Esri). The app itself never needs the network.
    there *because* they froze the desktop window. Follow that pattern.
 7. **No account system.** This is a single-operator offline tool. There is an
    optional `operator_name` setting for attribution only — no login, password,
-   or permissions. (A teammate's prototype has login screens; that is not the
-   product direction.)
+   or permissions. This holds even though cloud sync spans machines: Azure
+   Storage is the identity layer, and a container-scoped SAS token gives
+   per-device, expiring, revocable access without any app-side auth. Do not
+   build one; do not add a login screen.
 8. **Do not add cloud dependencies to the runtime.** Offline-first is a client
    requirement, not an implementation detail.
 

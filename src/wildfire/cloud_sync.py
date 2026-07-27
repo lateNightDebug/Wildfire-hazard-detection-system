@@ -58,39 +58,133 @@ def _require_azure():
     return BlobServiceClient, ContentSettings
 
 
-def _container_client(settings: Settings):
+def credential_kind(credential: str) -> str:
+    """Classify a credential so the UI can warn about over-broad ones.
+
+    'sas'         - a Shared Access Signature: scoped to what the admin granted
+                    and expires on its own. What we recommend.
+    'account_key' - the storage account master key: full read/write/DELETE over
+                    EVERY container in the account, and it never expires.
+    """
+    c = (credential or "").strip()
+    if not c:
+        return "none"
+    if "SharedAccessSignature=" in c or "sig=" in c:
+        return "sas"
+    if "AccountKey=" in c:
+        return "account_key"
+    return "unknown"
+
+
+def _read_credential(settings: Settings) -> str:
     import os
 
-    conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING") or settings.azure_connection_string
-    if not conn_str:
+    return (os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+            or settings.azure_connection_string or "").strip()
+
+
+def _ensure_container(container, name: str) -> None:
+    """Make sure the container is there, without demanding account-level rights.
+
+    A container-scoped SAS - the credential we want people to use - can neither
+    create containers nor always probe for their existence; both come back as a
+    403. That is the intended setup, not a failure: the admin creates the
+    container once and hands out a narrow token. So a probe we are not allowed
+    to make is treated as "it exists", and a container that genuinely is not
+    there surfaces with a clear message from test_connection() or on the first
+    upload rather than blocking the client here.
+    """
+    try:
+        if container.exists():
+            return
+    except Exception:
+        return  # not permitted to look - assume the admin created it
+    try:
+        container.create_container()
+    except Exception:
+        return  # cannot create with this token either; let the real call report
+
+
+def _container_client(settings: Settings):
+    """Container client from any of the three credential shapes people paste.
+
+    1. Account-key connection string  DefaultEndpointsProtocol=...;AccountKey=...
+    2. SAS connection string          BlobEndpoint=...;SharedAccessSignature=...
+    3. SAS URL from the portal        https://acct.blob.core.windows.net/name?sv=...
+
+    Form 3 is what the Azure portal's "Generate SAS" button actually gives you,
+    so accepting it directly saves the operator from hand-building a connection
+    string - which is where this normally goes wrong.
+    """
+    credential = _read_credential(settings)
+    if not credential:
         raise CloudSyncError(
-            "No Azure connection string configured. Set it in Settings -> Cloud sync, "
-            "or the AZURE_STORAGE_CONNECTION_STRING environment variable."
+            "No Azure credential configured. Paste a SAS URL or connection string "
+            "in Settings -> Cloud sync, or set the AZURE_STORAGE_CONNECTION_STRING "
+            "environment variable."
         )
     BlobServiceClient, _ = _require_azure()
     container_name = settings.azure_container or "wildfire-runs"
     try:
-        service = BlobServiceClient.from_connection_string(conn_str)
-        container = service.get_container_client(container_name)
-        if not container.exists():
-            container.create_container()
+        if credential.startswith(("http://", "https://")):
+            container = _container_from_url(credential, container_name)
+        else:
+            service = BlobServiceClient.from_connection_string(credential)
+            container = service.get_container_client(container_name)
+        _ensure_container(container, container_name)
         return container
     except CloudSyncError:
         raise
     except Exception as e:
         raise CloudSyncError(f"Azure connection failed: {type(e).__name__}: {e}") from e
 
+
+def _container_from_url(url: str, container_name: str):
+    """Build a client from a portal SAS URL.
+
+    The portal hands out two shapes: a container URL that already names the
+    container (.../wildfire-runs?sv=...) and an account URL that does not
+    (...blob.core.windows.net/?sv=...). Only the second needs the configured
+    container name appended.
+    """
+    from urllib.parse import urlparse
+
+    from azure.storage.blob import BlobServiceClient, ContainerClient
+
+    base, _, query = url.partition("?")
+    path = urlparse(base).path.strip("/")
+    if path:  # the container is already in the URL; its name wins
+        return ContainerClient.from_container_url(url)
+    account_url = base.rstrip("/")
+    service = BlobServiceClient(account_url=account_url, credential=query or None)
+    return service.get_container_client(container_name)
+
+
 # test connection
 def test_connection(settings: Settings) -> tuple[bool, str]:
-    """Quick round-trip check for the Settings page's "Test connection" button."""
+    """Quick round-trip check for the Settings page's "Test connection" button.
+
+    Reports which kind of credential is in use, because "it works" is not the
+    whole story: an account key works perfectly and is still the wrong thing to
+    copy onto several field laptops.
+    """
+    kind = credential_kind(_read_credential(settings))
     try:
         container = _container_client(settings)
         container.get_container_properties()
-        return True, f"Connected to container '{container.container_name}'"
     except CloudSyncError as e:
         return False, str(e)
     except Exception as e:  # pragma: no cover - defensive
         return False, f"{type(e).__name__}: {e}"
+
+    msg = f"Connected to container '{container.container_name}'"
+    if kind == "account_key":
+        msg += (" - using an ACCOUNT KEY, which grants full read/write/delete over "
+                "the whole storage account and never expires. Prefer a SAS token "
+                "scoped to this container.")
+    elif kind == "sas":
+        msg += " (SAS token)"
+    return True, msg
 
 
 # marker

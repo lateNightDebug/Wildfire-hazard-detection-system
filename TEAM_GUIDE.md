@@ -125,6 +125,31 @@ config/settings.json    all settings (editable in the Settings page)
 | **Download map for a new area** | Map page → *⬇ Map data* → pick "Around my scanned area" (needs internet once). |
 | **Free up disk space** | Delete whole `outputs/<run>/` folders you no longer need. Each run is self-contained. Keep `labels.json` if you want to preserve training data. |
 | **Check the AI report writer** | Settings → *Test connection* (LM Studio). |
+| **Share results between machines** | Settings → Cloud sync. Paste the SAS URL the admin generated, *Test connection*, switch on. There is **no login** — the token is the access. See below. |
+
+### Setting up cloud sync (optional, off by default)
+
+There is no account system and none is needed: Azure Storage is the identity layer, and
+the credential you paste decides what the app can reach. So issue a narrow one.
+
+**Admin, once.** Create a Storage Account and a **private** container named
+`wildfire-runs`. Open the container → *Shared access tokens* → tick **Read, Write, List**
+(leave **Delete** unticked) → set an expiry → copy the **Blob SAS URL**. Send that to the
+team.
+
+**Each machine, once.** Settings → Cloud sync → paste the URL → *Test connection* → turn
+it on. That is the whole setup — no username, no password.
+
+Why a SAS URL and not the connection string the portal shows first: that string contains
+`AccountKey=`, the account master key. It can read, write and **delete** every container
+in the account and never expires, so one lost laptop compromises everything. A SAS token
+reaches a single container, can be different per device, expires by itself, and can be
+revoked on its own. *Test connection* tells you which kind you pasted.
+
+Two practical notes: a scoped token **cannot create its container**, so make it in the
+portal first; and on a shared machine set `AZURE_STORAGE_CONNECTION_STRING` in the
+environment instead, which takes precedence and keeps the secret out of
+`config/settings.json`.
 
 ## 8. When something goes wrong
 
