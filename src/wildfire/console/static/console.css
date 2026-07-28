@@ -313,10 +313,15 @@ a:focus-visible, button:focus-visible, input:focus-visible,
    the operator clicks hundreds of times. A constant height letterboxes an odd
    aspect ratio against the dark backdrop, which is the cheaper cost. */
 .preview-box {
-  position: relative; background: #161a1b; height: 62vh; min-height: 340px;
+  position: relative; background: #161a1b; height: max(62vh, 340px);
   display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
-.preview-box img { max-width: 100%; max-height: 100%; display: block; }
+/* max-height repeats the box's own expression instead of saying 100%. A
+   percentage resolves against #stage, which hugs the image and has no definite
+   height, so it constrains nothing: a 5280x3956 frame rendered 623 px tall
+   inside a 446 px box and the bottom 177 px were cropped away with no way to
+   scroll to them. Same value on both keeps the frame whole. */
+.preview-box img { max-width: 100%; max-height: max(62vh, 340px); display: block; }
 .thumb-strip { display: flex; gap: 10px; padding: 12px 16px; overflow-x: auto; }
 .thumb-wrap { position: relative; flex-shrink: 0; }
 .thumb {

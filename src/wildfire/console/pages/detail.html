@@ -214,13 +214,27 @@ const SEV_NOTE = {
 let zoom = 1, panX = 0, panY = 0;
 let panning = null;
 
+/* Is any of the frame outside the viewing box right now? Panning keys off this
+   rather than off `zoom > 1`, so content can never be both hidden and
+   unreachable - which is exactly what happened when a sizing bug let the image
+   overflow at 1x: the bottom of every frame was cropped and dragging did
+   nothing, because dragging was only allowed once you had zoomed in. */
+function contentOverflows() {
+  const st = document.getElementById("stage");
+  const box = document.getElementById("preview");
+  if (!st || !box) return false;
+  const s = st.getBoundingClientRect(), b = box.getBoundingClientRect();
+  return s.width > b.width + 1 || s.height > b.height + 1;
+}
+
 function applyZoom() {
   const st = document.getElementById("stage");
   if (st) st.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
-  // Only shown while zoomed; at 1x it was permanent instructions taking space
-  // from the header. The image itself carries the hint as a tooltip.
-  document.getElementById("zoom-hint").textContent =
-    zoom > 1 ? `${zoom.toFixed(1)}× · drag: pan · dbl-click: reset` : "";
+  // Only shown when there is somewhere to go; at 1x on a fitted image it was
+  // permanent instructions taking space from the header.
+  const hint = document.getElementById("zoom-hint");
+  if (zoom > 1) hint.textContent = `${zoom.toFixed(1)}× · drag: pan · dbl-click: reset`;
+  else hint.textContent = contentOverflows() ? "drag: pan · dbl-click: reset" : "";
 }
 
 function resetZoom() { zoom = 1; panX = panY = 0; applyZoom(); }
@@ -243,7 +257,9 @@ previewEl.addEventListener("wheel", e => {
 }, { passive: false });
 
 previewEl.addEventListener("pointerdown", e => {
-  if (EDIT || zoom === 1) return;  // in edit mode dragging draws boxes
+  // In edit mode dragging draws boxes. Otherwise pan whenever something is off
+  // screen, whether that is because of zoom or because the frame does not fit.
+  if (EDIT || (zoom === 1 && !contentOverflows())) return;
   panning = { x: e.clientX, y: e.clientY };
   previewEl.setPointerCapture(e.pointerId);
 });
