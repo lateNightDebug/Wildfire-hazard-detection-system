@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # PostgreSQL + PostGIS database
+  db:
+    image: postgis/postgis:14-3.3
+    environment:
+      POSTGRES_DB: hazard_db
+      POSTGRES_USER: hazard_user
+      POSTGRES_PASSWORD: hazard_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hazard_user -d hazard_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://hazard_user:hazard_pass@db:5432/hazard_db
+      SECRET_KEY: dev-secret-key-change-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
+      AZURE_STORAGE_CONTAINER: drone-uploads
+      AI_SERVICE_URL: http://ai-service:8001
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:
