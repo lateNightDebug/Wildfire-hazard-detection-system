@@ -1,13 +1,26 @@
+"""Tests for the optional Azure Blob cloud sync.
+
+AUTHORSHIP
+    Everything from here to the "added later" banner - the FakeContainer double,
+    the fixtures, and the upload/exclusion/incremental tests - is by
+    **Tessa Rae Feyres**. Faking the container instead of reaching for the real
+    SDK is why this suite runs offline and why the later tests could reuse the
+    same seams; the venv does not even have azure-storage-blob installed.
+"""
+
 from __future__ import annotations
 
-# imports
 import json
+
 import pytest
 
 from src.wildfire import cloud_sync
 from src.wildfire.config import Settings
 
 
+# ===========================================================================
+# Tessa Rae Feyres - test doubles, fixtures, and the upload-path tests
+# ===========================================================================
 class FakeContentSettings:
     def __init__(self, content_type=None):
         self.content_type = content_type
@@ -117,7 +130,10 @@ def test_test_connection_reports_missing_connection_string(tmp_path, monkeypatch
     assert "connection string" in message.lower()
 
 
-# ---------------------------------------------------------------- credentials
+# ===========================================================================
+# Added later - credentials and results-only sync. Everything below reuses the
+# FakeContainer and fixtures above rather than introducing its own.
+# ===========================================================================
 # A SAS token scoped to one container is the credential we want people to use.
 # An account key also works and is what the portal offers first, so the code has
 # to accept both, tell them apart, and say so.

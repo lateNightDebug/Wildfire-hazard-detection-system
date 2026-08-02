@@ -1,5 +1,26 @@
+"""Optional cloud sync: publish a run to an Azure Blob Storage container.
+
+Off by default, and the Azure SDK is imported lazily, so the application runs
+normally with the package absent.
+
+AUTHORSHIP
+    The original module - Azure client bootstrap, the sync marker, the exclusion
+    rules and the whole-folder upload path - was designed and written by
+    **Tessa Rae Feyres**. Its structure is why the later additions are small:
+    `_require_azure` and `_container_client` are the seams the tests monkeypatch,
+    and the marker format carried the incremental logic unchanged.
+
+    Tessa's code, still hers today (see `git blame`):
+        CloudSyncError, SyncResult, _require_azure, _load_marker, _save_marker,
+        sync_status, _iter_run_files, upload_run, _content_type
+    Extended jointly: _read_credential, _container_client, test_connection
+    Added later (SAS credentials, results-only sync): everything else
+
+    Section banners below mark the boundaries. tests/test_cloud_sync.py is
+    likewise hers from the top of the file through the marker there.
+"""
+
 from __future__ import annotations
-# imports
 
 import gzip
 import io
@@ -33,6 +54,9 @@ _EXCLUDE_DIR_NAMES = {"_cache"}
 ProgressFn = Optional[Callable[[int, int, str], None]]
 
 
+# ===========================================================================
+# Tessa Rae Feyres - core types and the Azure client bootstrap
+# ===========================================================================
 class CloudSyncError(RuntimeError):
     """error handling"""
 
@@ -69,6 +93,11 @@ def _require_azure():
     return BlobServiceClient, ContentSettings
 
 
+# ===========================================================================
+# Added later - credential handling (SAS tokens alongside account keys).
+# _read_credential, _container_client and test_connection below started as
+# Tessa's and were extended here, not replaced.
+# ===========================================================================
 def credential_kind(credential: str) -> str:
     """Classify a credential so the UI can warn about over-broad ones.
 
@@ -193,7 +222,11 @@ def test_connection(settings: Settings) -> tuple[bool, str]:
     return True, msg
 
 
-# marker
+# ===========================================================================
+# Tessa Rae Feyres - the sync marker and the whole-folder upload path.
+# The marker format below is what makes re-syncing incremental: a size:mtime
+# fingerprint per file, so a second pass after a review uploads only what moved.
+# ===========================================================================
 def _load_marker(run_dir: Path) -> dict:
     f = run_dir / MARKER_NAME
     if not f.exists():
@@ -291,7 +324,11 @@ def _content_type(path: Path) -> Optional[str]:
     }.get(path.suffix.lower())
 
 
-# ------------------------------------------------------------ results sync
+# ===========================================================================
+# Added later - results-only sync: one small JSON per run instead of the whole
+# folder, plus the download side. Built on top of Tessa's client and marker
+# above rather than replacing them.
+# ===========================================================================
 def _machine_name() -> str:
     """Host name, used to say which machine owns a run."""
     import socket

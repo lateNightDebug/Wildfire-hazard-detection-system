@@ -6,7 +6,8 @@ who touches the code.**
 
 Other docs: [README.md](README.md) (technical overview) ·
 [MANUAL.md](MANUAL.md) (end-user manual) · [INSTALL.md](INSTALL.md) (packaging) ·
-[PLAN.md](PLAN.md) (what was built, in order).
+[PLAN.md](PLAN.md) (what was built, in order) ·
+[CONTRIBUTORS.md](CONTRIBUTORS.md) (who built what).
 
 ---
 
