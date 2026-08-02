@@ -6,14 +6,13 @@ normally with the package absent.
 AUTHORSHIP
     The original module - Azure client bootstrap, the sync marker, the exclusion
     rules and the whole-folder upload path - was designed and written by
-    **Tessa Rae Feyres**. Its structure is why the later additions are small:
-    `_require_azure` and `_container_client` are the seams the tests monkeypatch,
-    and the marker format carried the incremental logic unchanged.
+    **Tessa Rae Feyres**. `_require_azure` and `_container_client` are the seams
+    the tests monkeypatch, and the marker format carries the incremental logic.
 
-    Tessa's code, still hers today (see `git blame`):
+    Tessa's code:
         CloudSyncError, SyncResult, _require_azure, _load_marker, _save_marker,
         sync_status, _iter_run_files, upload_run, _content_type
-    Extended jointly: _read_credential, _container_client, test_connection
+    Hers, extended later: _read_credential, _container_client, test_connection
     Added later (SAS credentials, results-only sync): everything else
 
     Section banners below mark the boundaries. tests/test_cloud_sync.py is
@@ -95,8 +94,8 @@ def _require_azure():
 
 # ===========================================================================
 # Added later - credential handling (SAS tokens alongside account keys).
-# _read_credential, _container_client and test_connection below started as
-# Tessa's and were extended here, not replaced.
+# _read_credential, _container_client and test_connection below are Tessa's,
+# extended here for the SAS shapes.
 # ===========================================================================
 def credential_kind(credential: str) -> str:
     """Classify a credential so the UI can warn about over-broad ones.
@@ -326,8 +325,7 @@ def _content_type(path: Path) -> Optional[str]:
 
 # ===========================================================================
 # Added later - results-only sync: one small JSON per run instead of the whole
-# folder, plus the download side. Built on top of Tessa's client and marker
-# above rather than replacing them.
+# folder, plus the download side. Uses Tessa's client and marker above.
 # ===========================================================================
 def _machine_name() -> str:
     """Host name, used to say which machine owns a run."""

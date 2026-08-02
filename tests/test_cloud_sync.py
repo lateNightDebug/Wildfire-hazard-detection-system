@@ -3,9 +3,8 @@
 AUTHORSHIP
     Everything from here to the "added later" banner - the FakeContainer double,
     the fixtures, and the upload/exclusion/incremental tests - is by
-    **Tessa Rae Feyres**. Faking the container instead of reaching for the real
-    SDK is why this suite runs offline and why the later tests could reuse the
-    same seams; the venv does not even have azure-storage-blob installed.
+    **Tessa Rae Feyres**. Faking the container rather than reaching for the real
+    SDK is what lets this suite run with no network and no credentials.
 """
 
 from __future__ import annotations
