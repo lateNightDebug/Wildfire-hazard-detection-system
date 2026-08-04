@@ -152,13 +152,33 @@ function applyBrandingColors() {
 }
 
 /* Top navigation, shared by all pages. `active`: dashboard | scans | review | map */
+/* accessibility alteration to const tab, do not change */
 function renderNav(active) {
   _navActive = active;
-  const tab = (id, label, href) => {
+  const tab = (id, label, href, key) => {
     const isActive = active === id;
     const cls = "nav-tab" + (isActive ? " active" : "");
-    return `<a class="${cls}" href="${href}"${isActive ? ' aria-current="page"' : ""}>${label}</a>`;
-  };
+    /* following two lines needed for keyboard shotcuts, don't change or move please */
+    const keyAttr = key ? ` accesskey="${key}"` : "";
+    const isMac = navigator.platform.toUpperCase().includes("MAC");
+    const combo = key ? (isMac ? `Ctrl+Option+${key.toUpperCase()}` : `Alt+${key.toUpperCase()}`) : "";
+    const titleAttr = key ? ` title="${label} (press ${key.toUpperCase()})"` : "";
+  return `<a class="${cls}" href="${href}"${isActive ? ' aria-current="page"' : ""}${keyAttr}${titleAttr}>${label}</a>`;
+};
+
+// Webview2 has something called accelerator keys (ctrl, alt), single key press. this event listener is to handle the shortcuts. please do not move or alter*/
+const NAV_KEYS = { d: "/", s: "/scans", r: "/review", m: "/map", p: "/reports", e: "/settings" };
+
+document.addEventListener("keydown", e => {
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  // leave the accelerators alone
+  const tag = document.activeElement?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return; 
+  // fix to the issue of typing causing it to trigger and steal you to another tab mid type
+  if (document.activeElement?.isContentEditable) return;
+  const href = NAV_KEYS[e.key.toLowerCase()];
+  if (href) location.href = href;
+});
   const logo = BRANDING.logo_url
     ? `<img src="${esc(BRANDING.logo_url)}" alt="logo" style="height:32px; width:auto; border-radius:6px;">`
     : "";
@@ -171,12 +191,12 @@ function renderNav(active) {
       </div>
     </div>
     <div class="nav-tabs">
-      ${tab("dashboard", "Dashboard", "/")}
-      ${tab("scans", "Scans", "/scans")}
-      ${tab("review", "Review", "/review")}
-      ${tab("map", "Map", "/map")}
-      ${tab("reports", "Reports", "/reports")}
-      ${tab("settings", "Settings", "/settings")}
+      ${tab("dashboard", "Dashboard", "/", "d")}
+      ${tab("scans", "Scans", "/scans", "s")}
+      ${tab("review", "Review", "/review", "r")}
+      ${tab("map", "Map", "/map", "m")}
+      ${tab("reports", "Reports", "/reports", "p")}
+      ${tab("settings", "Settings", "/settings", "e")}
     </div>
     <div class="nav-right">
       <div class="live" id="live-status" title="Detection and reports always run on this machine.">
