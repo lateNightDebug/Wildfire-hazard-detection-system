@@ -54,7 +54,8 @@
         <span class="card-title">Hazard Map</span>
         <span class="mono" style="font-size:11px; color:var(--muted-3);" id="pin-count">· 0 markers</span>
       </div>
-      <div style="display:flex; align-items:center; gap:14px; font-size:11px; color:var(--muted);" id="legend">
+      <div style="display:flex; align-items:center; gap:12px; font-size:11px; color:var(--muted);" id="legend">
+        <span id="kind-filter" style="display:inline-flex; align-items:center; gap:2px;"></span>
         <a class="link-green" href="/map" style="font-size:11px;">Open map →</a>
       </div>
     </div>
@@ -111,23 +112,79 @@
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script>
 renderNav("dashboard");
-document.getElementById("legend").insertAdjacentHTML("afterbegin", kindLegendHtml());
 let SUMMARY = null, INFO = null, SITES = [];
 let selectedPin = null;
+let LEAF = null;   // Leaflet handle — filter toggles markers in place, never rebuilds the map
+
+/* Pin filter: the legend chips toggle hazard types on the map. The choice is
+   persisted so a field preference survives restarts, but an empty saved set
+   falls back to everything — restoring a blank map reads as "the dashboard
+   broke", not "I filtered this last week". */
+const KIND_FILTER_KEY = "wf.dashboard.kinds";
+function loadKinds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KIND_FILTER_KEY));
+    const valid = (Array.isArray(saved) ? saved : []).filter(k => KIND[k]);
+    if (valid.length) return new Set(valid);
+  } catch (e) { /* first visit or unreadable — show everything */ }
+  return new Set(Object.keys(KIND));
+}
+const activeKinds = loadKinds();
+const siteVisible = s => activeKinds.has(kindKey(s.kind));
+
+function drawKindFilter() {
+  document.getElementById("kind-filter").innerHTML = kindFilterHtml(activeKinds);
+}
+
+document.getElementById("kind-filter").addEventListener("click", e => {
+  const btn = e.target.closest("[data-kind]");
+  if (!btn) return;
+  const k = btn.dataset.kind;
+  if (activeKinds.has(k)) activeKinds.delete(k);
+  else activeKinds.add(k);
+  localStorage.setItem(KIND_FILTER_KEY, JSON.stringify([...activeKinds]));
+  if (selectedPin !== null && SITES[+selectedPin] && !siteVisible(SITES[+selectedPin])) {
+    selectedPin = null;   // the open popup's pin just got hidden
+  }
+  drawKindFilter();
+  applyKindFilter();
+});
+
+function applyKindFilter() {
+  updatePinCount();
+  if (LEAF) {
+    SITES.forEach((s, i) => {
+      if (siteVisible(s)) LEAF.markers[i].addTo(LEAF.map);
+      else LEAF.map.removeLayer(LEAF.markers[i]);
+    });
+  } else {
+    drawMap();
+  }
+}
+
+function updatePinCount() {
+  const m = window.__mapMonth;
+  const label = (!m || m === "all") ? "" : ` · ${m}`;
+  const shown = SITES.filter(siteVisible).length;
+  document.getElementById("pin-count").textContent = shown === SITES.length
+    ? `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}${label}`
+    : `· ${shown} of ${SITES.length} sites${label}`;
+}
 
 // Same data and component as the Map page: offline tiles when cached,
 // stylized fallback otherwise — the two maps can no longer disagree.
 function drawMap() {
   const el = document.getElementById("map");
-  const m = window.__mapMonth;
-  const label = (!m || m === "all") ? "" : ` · ${m}`;
-  document.getElementById("pin-count").textContent =
-    `· ${SITES.length} site${SITES.length === 1 ? "" : "s"}${label}`;
+  updatePinCount();
   if (INFO && INFO.tiles) {
-    initLeafletSites(el, SITES, INFO, { overlays: false, onOpen: openFullMap });
+    LEAF = initLeafletSites(el, SITES, INFO, { overlays: false, onOpen: openFullMap });
+    applyKindFilter();   // hide whatever the saved filter says to hide
     return;
   }
-  const pins = gpsToPercent(SITES.map((s, i) => ({ ...s, id: String(i) })));
+  /* Project ALL sites, then drop the hidden kinds: the bounding box stays put,
+     so pins don't jump around when a type is toggled. Ids are positions in
+     SITES, which keeps double-click -> /map?site= pointing at the right site. */
+  const pins = gpsToPercent(SITES.map((s, i) => ({ ...s, id: String(i) }))).filter(siteVisible);
   let html = terrainSvg("wf") + '<div class="map-grid-overlay"></div>';
   for (const p of pins) html += fallbackPinHtml(p, selectedPin === p.id);
   const sel = pins.find(p => p.id === selectedPin);
@@ -144,7 +201,9 @@ function drawMap() {
       </div>`;
   }
   if (!pins.length) {
-    html += '<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cdd6c0; opacity:.5; font-size:12px;" class="mono">No GPS-tagged scans yet</div>';
+    const why = SITES.length ? "Every hazard type is hidden — click a type above"
+                             : "No GPS-tagged scans yet";
+    html += `<div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cdd6c0; opacity:.5; font-size:12px;" class="mono">${why}</div>`;
   }
   html += '<div class="map-attr">Stylized terrain · open Map to download offline satellite tiles</div>';
   el.innerHTML = html;
@@ -265,6 +324,7 @@ async function load() {
 
 document.getElementById("q").addEventListener("input", drawRecent);
 document.getElementById("sort").addEventListener("change", drawRecent);
+drawKindFilter();
 load().catch(e => toast("Failed to load dashboard: " + e.message));
 </script>
 </body>

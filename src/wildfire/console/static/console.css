@@ -167,6 +167,19 @@ button { font-family: inherit; }
 .link-green { font-size: 12px; font-weight: 600; color: var(--green); cursor: pointer; }
 .link-green:hover { text-decoration: underline; }
 
+/* Legend chips that double as the Dashboard's pin filter. Off is dimmed, not
+   removed — the legend must keep teaching the colours even while filtering. */
+.kind-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  font: inherit; color: inherit; background: none;
+  border: 1px solid transparent; border-radius: 20px; padding: 3px 9px;
+  cursor: pointer;
+}
+.kind-toggle:hover { border-color: var(--border-2); background: var(--bg); }
+.kind-toggle:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.kind-toggle.off { opacity: .35; filter: grayscale(70%); }
+.kind-toggle.off:hover { opacity: .6; }
+
 /* inputs */
 .select {
   font-size: 12px; font-family: inherit; color: var(--text); background: var(--bg);

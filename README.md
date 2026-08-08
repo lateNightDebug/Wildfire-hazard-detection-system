@@ -57,7 +57,7 @@ python -m scripts.install_desktop_app   # Windows: Desktop + Start Menu shortcut
 
 | Page | What it does |
 |------|--------------|
-| **Dashboard** | Stat cards, hazard mini-map, detections by type, review backlog, training-set size |
+| **Dashboard** | Stat cards, hazard mini-map (legend chips filter pins by type), detections by type, review backlog, training-set size |
 | **Scans** | Mission-folder browser + upload + model status + run history |
 | **Scan Detail** | Zoomable viewer (wheel/drag/dbl-click), click-to-locate detections, **box review editor**, report generation |
 | **Review** | All runs grouped by day with needs-review/reviewed status — the backlog view |

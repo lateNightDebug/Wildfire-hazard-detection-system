@@ -40,6 +40,7 @@ const KIND = {
   },
 };
 const kindOf = s => KIND[s.kind] || KIND.deadtree;
+const kindKey = k => (KIND[k] ? k : "deadtree");
 
 /* Dead tree is drawn as strokes (bare branches), the other two as filled
    silhouettes — a shape difference that survives being scaled down to 10px. */
@@ -65,6 +66,19 @@ function kindLegendHtml() {
   return Object.keys(KIND).map(k =>
     `<span style="display:inline-flex; align-items:center; gap:4px;">${kindIcon(k, 13)} ${KIND[k].label}</span>`
   ).join("");
+}
+
+/* Interactive twin of kindLegendHtml: same icons and labels, but every entry is
+   a real <button> that toggles its hazard type on the map (the Dashboard's pin
+   filter). `active` is the Set of kind keys currently shown; the pressed state
+   rides on aria-pressed so the chips read as toggles, not decoration. */
+function kindFilterHtml(active) {
+  return Object.keys(KIND).map(k => {
+    const on = active.has(k);
+    return `<button type="button" class="kind-toggle${on ? "" : " off"}" data-kind="${k}"
+      aria-pressed="${on}" title="${on ? "Hide" : "Show"} ${KIND[k].label} pins">
+      ${kindIcon(k, 13)} ${KIND[k].label}</button>`;
+  }).join("");
 }
 
 const REVIEW_URL_FALLBACK = "http://127.0.0.1:7860";
@@ -364,7 +378,7 @@ const MARKER_ICON_LIMIT = 500;
 function siteDivIcon(s) {
   const k = kindOf(s);
   const d = Math.round(22 + Math.min(s.count, 10) * 1.4);   // 22..36 px
-  const kind = KIND[s.kind] ? s.kind : "deadtree";
+  const kind = kindKey(s.kind);
   return L.divIcon({
     className: "",   // Leaflet's default adds a white box
     html: `<span class="site-pin" style="width:${d}px; height:${d}px; background:${k.color};">
@@ -378,7 +392,7 @@ function siteDivIcon(s) {
    the two cannot drift apart. `p` comes from gpsToPercent(). */
 function fallbackPinHtml(p, selected) {
   const k = kindOf(p);
-  const kind = KIND[p.kind] ? p.kind : "deadtree";
+  const kind = kindKey(p.kind);
   return `
     <div class="pin ${selected ? "selected" : ""}" data-id="${esc(String(p.id))}"
          style="left:${p.x}%; top:${p.y}%;" title="${esc(k.label)} — double-click to open">
