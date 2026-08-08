@@ -61,17 +61,10 @@ function kindBadge(kind) {
 }
 
 /* Shared legend for the Dashboard and Map map cards — one definition, so the
-   two can no longer drift the way the hardcoded hex swatches did. */
-function kindLegendHtml() {
-  return Object.keys(KIND).map(k =>
-    `<span style="display:inline-flex; align-items:center; gap:4px;">${kindIcon(k, 13)} ${KIND[k].label}</span>`
-  ).join("");
-}
-
-/* Interactive twin of kindLegendHtml: same icons and labels, but every entry is
-   a real <button> that toggles its hazard type on the map (the Dashboard's pin
-   filter). `active` is the Set of kind keys currently shown; the pressed state
-   rides on aria-pressed so the chips read as toggles, not decoration. */
+   two cannot drift the way the hardcoded hex swatches did. Every entry is also
+   a real <button> that toggles its hazard type on the map (the pin filter);
+   the pressed state rides on aria-pressed so the chips read as toggles, not
+   decoration. `active` is the Set of kind keys currently shown. */
 function kindFilterHtml(active) {
   return Object.keys(KIND).map(k => {
     const on = active.has(k);
@@ -79,6 +72,23 @@ function kindFilterHtml(active) {
       aria-pressed="${on}" title="${on ? "Hide" : "Show"} ${KIND[k].label} pins">
       ${kindIcon(k, 13)} ${KIND[k].label}</button>`;
   }).join("");
+}
+
+/* One saved pin-filter for both hazard maps: hiding a type on the Dashboard
+   hides it on the Map page too — it is one decision about what the operator is
+   hunting, not a per-page view setting. An all-hidden saved set falls back to
+   everything, because restoring a blank map reads as broken, not filtered. */
+const KIND_FILTER_KEY = "wf.kinds";
+function loadKindFilter() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KIND_FILTER_KEY));
+    const valid = (Array.isArray(saved) ? saved : []).filter(k => KIND[k]);
+    if (valid.length) return new Set(valid);
+  } catch (e) { /* first visit or unreadable — show everything */ }
+  return new Set(Object.keys(KIND));
+}
+function saveKindFilter(active) {
+  localStorage.setItem(KIND_FILTER_KEY, JSON.stringify([...active]));
 }
 
 const REVIEW_URL_FALLBACK = "http://127.0.0.1:7860";

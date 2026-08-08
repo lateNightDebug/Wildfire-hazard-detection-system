@@ -61,7 +61,7 @@ python -m scripts.install_desktop_app   # Windows: Desktop + Start Menu shortcut
 | **Scans** | Mission-folder browser + upload + model status + run history |
 | **Scan Detail** | Zoomable viewer (wheel/drag/dbl-click), click-to-locate detections, **box review editor**, report generation |
 | **Review** | All runs grouped by day with needs-review/reviewed status — the backlog view |
-| **Map** | Offline satellite map (Leaflet) with month/year filter and ≤40 m **site dedup**; in-UI tile download |
+| **Map** | Offline satellite map (Leaflet) with month/year + hazard-type pin filters and ≤40 m **site dedup**; in-UI tile download |
 | **Reports** | Every generated PDF, newest first (timestamped, never overwritten) |
 | **Settings** | Detection params, severity thresholds, model toggles, ONNX preprocessing, LM Studio test, map download |
 

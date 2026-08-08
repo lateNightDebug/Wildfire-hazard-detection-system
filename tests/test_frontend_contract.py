@@ -210,8 +210,8 @@ def test_hazard_colour_helpers_are_still_wired_up():
     shared_src = SHARED_JS.read_text(encoding="utf-8")
     pages_js = "\n".join(_inline_js(p.read_text(encoding="utf-8")) for p in _pages())
     everything = shared_src + "\n" + pages_js
-    for helper in ("kindIcon", "kindBadge", "kindLegendHtml", "kindFilterHtml",
-                   "kindKey", "fallbackPinHtml", "siteDivIcon", "initLeafletSites"):
+    for helper in ("kindIcon", "kindBadge", "kindFilterHtml", "kindKey",
+                   "fallbackPinHtml", "siteDivIcon", "initLeafletSites"):
         assert helper in _defined_in(shared_src), f"{helper} is gone from console.js"
         assert len(re.findall(rf"\b{helper}\s*\(", everything)) > 1, \
             f"{helper} is defined but never called - dead helper?"
@@ -234,20 +234,28 @@ def test_hazard_colour_helpers_are_still_wired_up():
             )
 
 
-def test_dashboard_pin_filter_is_wired_up():
-    """The dashboard legend doubles as the hazard-type pin filter (a project-lead
-    request). Guard its two moving parts: the shared chip builder must keep
-    emitting real accessible toggles, and the dashboard must keep routing
-    through it instead of hand-rolling chips that would drift from KIND.
+def test_pin_filter_is_wired_up():
+    """The map legends double as the hazard-type pin filter (a project-lead
+    request). Guard its moving parts: the shared chip builder must keep emitting
+    real accessible toggles, both map pages must keep routing through it instead
+    of hand-rolling chips that would drift from KIND, and both must share the
+    persisted choice rather than growing per-page keys.
     """
     shared_src = SHARED_JS.read_text(encoding="utf-8")
-    dash_js = _inline_js((PAGES / "dashboard.html").read_text(encoding="utf-8"))
-    assert re.search(r"\bkindFilterHtml\s*\(", dash_js), \
-        "dashboard.html no longer renders the kind filter chips"
     block = re.search(r"function kindFilterHtml\b.*?\n\}", shared_src, re.S)
     assert block, "kindFilterHtml is gone from console.js"
     for needed in ("<button", "data-kind", "aria-pressed"):
         assert needed in block.group(0), (
             f"kindFilterHtml lost {needed!r}; the filter chips must stay real "
             f"buttons with toggle semantics, not styled spans"
+        )
+    for page in ("dashboard.html", "map.html"):
+        page_js = _inline_js((PAGES / page).read_text(encoding="utf-8"))
+        assert re.search(r"\bkindFilterHtml\s*\(", page_js), \
+            f"{page} no longer renders the kind filter chips"
+        assert re.search(r"\bloadKindFilter\s*\(", page_js), \
+            f"{page} no longer loads the shared filter state (one choice, both maps)"
+        assert "localStorage" not in page_js, (
+            f"{page} touches localStorage directly; go through "
+            f"loadKindFilter/saveKindFilter so the two maps cannot drift apart"
         )

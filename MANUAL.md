@@ -113,8 +113,9 @@ Review boxes (confirm/draw/delete)  →  Generate Report (PDF)  →  Map / Repor
    slate grey, dead tree bone white, each with its own icon; nearby images
    within 40 m merge into one site). **Double-click a marker** to open the map
    fullscreen zoomed to that site — or use the *Fullscreen* button; *Esc* exits.
-   On the Dashboard map the legend doubles as a filter: click a hazard type to
-   hide or show its pins (the choice is remembered on that computer).
+   On both maps the legend doubles as a filter: click a hazard type to hide or
+   show its pins and its site-list rows (one shared choice, remembered on that
+   computer).
 
 ## 5. Where your data lives
 
