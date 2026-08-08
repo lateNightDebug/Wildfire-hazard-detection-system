@@ -292,6 +292,16 @@ outputs/<run>_<timestamp>/
     O(n * sites) and took 7.5 s at that size -- inside a web request, so the
     window froze. It is grid-indexed now; keep any new geo work off nested
     scans, and size test data by the MONTH, not by one 60-photo run.
+11. **Browsers cache pages and `static/` across code updates.** The symptom is
+    an `Uncaught ReferenceError` for a shared helper that plainly exists — or
+    one that was just deleted: removing `kindLegendHtml` broke a still-cached
+    `/map` that called it, while the fresh `console.js` loaded fine beside it.
+    Old HTML + new JS (or the reverse) is a stale-cache mix, not a code bug:
+    hard-refresh (Ctrl+Shift+R / Cmd+Shift+R) before debugging any
+    "helper is not defined" error, and hard-refresh once after pulling
+    someone's console changes. The lasting fix, if this keeps biting, is a
+    version query on the shared `<script>`/`<link>` tags — a cross-page
+    change to decide as a team.
 
 ---
 
@@ -311,7 +321,7 @@ outputs/<run>_<timestamp>/
 
 ## 9. Current state and open items
 
-- **Tests**: 120 passing, 4 skipped (fire/smoke weights absent; icon sizes too
+- **Tests**: 121 passing, 4 skipped (fire/smoke weights absent; icon sizes too
   small to measure). Green on Windows and on macOS 26 / Apple Silicon /
   Python 3.13. Modules without coverage: `llm.py`, `jobs.py`, `worker.py`,
   `desktop.py`.
